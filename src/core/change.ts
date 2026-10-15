@@ -87,6 +87,7 @@ export interface PropagationView {
   asked?: number;
   shown?: number;
   inScope?: number;
+  session?: number;
   unknown?: number;
 }
 
@@ -147,6 +148,7 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
     asked: review_.filter((f) => f.tier === 'asked').length,
     shown: review_.filter((f) => f.tier === 'shown').length,
     inScope: review_.filter((f) => f.tier === 'in_scope').length,
+    session: review_.filter((f) => f.tier === 'session').length,
     unknown: found.filter((f) => verdicts.get(f.path)?.verdict === 'unknown').length,
   });
   return (await getPropagation(db, teamId, id))!;
@@ -160,6 +162,7 @@ export function receipt(p: PropagationView, now = Date.now()): string {
   if (p.status !== 'done') return `${what} Propagation ${p.status}.`;
   const tiers = [
     p.asked ? `${p.asked} asked` : '', p.shown ? `${p.shown} shown` : '', p.inScope ? `${p.inScope} in scope` : '',
+    p.session ? `${p.session} same session` : '',
   ].filter(Boolean).join(', ');
   const total = p.filesTotal ?? 0;
   const head = `${total} file${total === 1 ? ' was' : 's were'} changed under the old version`;

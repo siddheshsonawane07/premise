@@ -12,7 +12,7 @@ import { chainFor, pathsUp } from './rules.ts';
 export const READ_TOOLS = new Set(['Read']);
 export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
 
-export type Tier = 'asked' | 'shown' | 'in_scope';
+export type Tier = 'asked' | 'shown' | 'in_scope' | 'session';
 
 export interface ToolEvent {
   session_id: string;
@@ -125,7 +125,8 @@ export async function postEdit(
 ): Promise<{ resolved: number; duplicate?: boolean; relied: { versionId: string; tier: Tier }[] }> {
   const path = filePathOf(ev);
   const rules = await scopedRules(db, who, ev.session_id, path);
-  const relied = rules.map((r) => ({ versionId: r.versionId, tier: tierOf(r) }));
+  const relied: { versionId: string; tier: Tier }[] = rules.map((r) => ({ versionId: r.versionId, tier: tierOf(r) }));
+  relied.push(...await sessionTier(db, who, ev.session_id, path, new Set(rules.map((r) => r.ruleId))));
   const changeId = ev.tool_use_id ?? `${ev.session_id}:${path}:${Date.now()}`;
   const result = await writeChange(db, who, {
     session: ev.session_id, tool, path, changeId, diff: diffOf(ev), relied,
@@ -133,6 +134,27 @@ export async function postEdit(
   const content = editedContent(ev);
   if (content !== undefined) await recordSnapshot(db, who, path, content);
   return { ...result, relied };
+}
+
+/**
+ * Tier `session`: rules this member looked up earlier in the session for another file, not in
+ * scope here, kept to the markets this path's folders serve. The weakest link; the Reviewer
+ * clears the files that turn out not to use the figure.
+ */
+async function sessionTier(
+  db: Db, who: Principal, session: string, path: string, already: Set<string>,
+): Promise<{ versionId: string; tier: Tier }[]> {
+  const g = db.team(who.teamId);
+  const looked = await run<{ versionId: string; ruleId: string; jurisdiction: string }>(g, TEAM.sessionLookups, {
+    session, member: who.memberId,
+  }, { readOnly: true });
+  const extra = looked.filter((l) => !already.has(l.ruleId));
+  if (!extra.length) return [];
+  const served = await one<{ codes: string[] }>(g, TEAM.servedBy, { folders: pathsUp(path).slice(1) }, { readOnly: true });
+  const markets = served?.codes ?? [];
+  return extra
+    .filter((l) => !markets.length || markets.includes(l.jurisdiction))
+    .map((l) => ({ versionId: l.versionId, tier: 'session' as const }));
 }
 
 async function writeChange(

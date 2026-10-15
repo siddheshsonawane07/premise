@@ -184,6 +184,18 @@ export const TEAM = {
            prev.figure AS previousFigure, lastEdit, shown, asked
     ORDER BY ruleId`,
 
+  /**
+   * Rule versions this member looked up since the session began, for any file, with their market.
+   * An edited file that is not in such a rule's scope still relied on it at tier `session`: the
+   * agent had the figure in hand (real sessions copy it into tests written right after).
+   */
+  sessionLookups: `
+    MATCH (s:Session {id: $session})
+    MATCH (:Member {id: $member})<-[:BY]-(lk:Lookup)-[:OF]->(v:RuleVersion)
+    WHERE lk.at >= s.started_at
+    MATCH (r:Rule {id: v.rule_id})-[:APPLIES_IN]->(j:Jurisdiction)
+    RETURN DISTINCT v.id AS versionId, r.id AS ruleId, j.code AS jurisdiction`,
+
   /** Open review tasks on a file, with who has them and any live claim. */
   fileTasks: `
     MATCH (t:ReviewTask)-[:FOR]->(:File {path: $path})
@@ -334,7 +346,7 @@ export const TEAM = {
            nv.unit AS unit, nv.status AS newStatus, nv.effective_from AS effectiveFrom, nv.text AS newText,
            old.text AS oldText, nv.citation AS citation,
            p.files_total AS filesTotal, p.needs_review AS needsReview, p.cleared AS cleared,
-           p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.unknown AS unknown`,
+           p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.session AS session, p.unknown AS unknown`,
 
   /** Propagations not yet done: re-queued at start-up. */
   unfinishedPropagations: `
@@ -369,7 +381,8 @@ export const TEAM = {
     ORDER BY lc.at DESC
     WITH f, tiers, collect(m.id)[0] AS ownerId, collect(m.name)[0] AS ownerName
     RETURN f.path AS path, ownerId, ownerName,
-           CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown' ELSE 'in_scope' END AS tier
+           CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown'
+                WHEN 'in_scope' IN tiers THEN 'in_scope' ELSE 'session' END AS tier
     ORDER BY path`,
 
   /** Q13. What a propagation found, dry run or final, with who would own each file. */
@@ -443,7 +456,7 @@ export const TEAM = {
   finishPropagation: `
     MATCH (p:Propagation {id: $id})
     SET p.status = 'done', p.files_total = $filesTotal, p.needs_review = $needsReview, p.cleared = $cleared,
-        p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.unknown = $unknown
+        p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.session = $session, p.unknown = $unknown
     RETURN p.id AS id`,
 
   /**

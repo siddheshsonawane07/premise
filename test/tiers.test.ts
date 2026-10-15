@@ -112,6 +112,27 @@ describe('tiers (plan §15.2)', () => {
     expect(await tiersOf(ev.tool_use_id!)).toEqual({ 'in-cash-load@1': 'asked', 'us-ctr@1': 'asked' });
   });
 
+  it('a file outside the scope, edited in a session that looked the rule up for another file → session', async () => {
+    await sessionStart(db, w.ben, { session_id: 's-b9' });
+    await lookupRule(db, w.ben, { rule: 'in-cash-load', path: 'src/wallet/limits.ts' });
+    const ev = writeEv('s-b9', 'test/limits.test.ts', 'expect(limit).toBe(50_000_00)');
+    await postEdit(db, w.ben, ev);
+    expect(await tiersOf(ev.tool_use_id!)).toEqual({ 'in-cash-load@1': 'session' });
+  });
+
+  it('the session tier respects markets: a US-only file gets no India link', async () => {
+    const ev = writeEv('s-b9', 'src/markets/us/new.ts', 'x');
+    await postEdit(db, w.ben, ev);
+    expect(await tiersOf(ev.tool_use_id!)).toEqual({ 'us-ctr@1': 'in_scope' });
+  });
+
+  it('a lookup from an earlier session does not carry over', async () => {
+    await sessionStart(db, w.ben, { session_id: 's-b10' });
+    const ev = writeEv('s-b10', 'test/other.test.ts', 'x');
+    await postEdit(db, w.ben, ev);
+    expect(await tiersOf(ev.tool_use_id!)).toEqual({});
+  });
+
   it('a US folder never sees the India rule', async () => {
     const ctx = await onRead(db, w.ben, readEv('s-b3', 'src/markets/us/ctr-report.ts'));
     expect(ctx).toContain('$10,000');

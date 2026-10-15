@@ -151,7 +151,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
         </tr>`)}</tbody>
       </table>
       <p class="muted small">Tiers: <b>asked</b> = the agent looked the rule up while writing this file; <b>shown</b> = Premise showed it the rule
-      before the edit; <b>in scope</b> = the file sits in the rule's folders but nothing was shown (a hand or shell edit).</p>
+      before the edit; <b>in scope</b> = the file sits in the rule's folders but nothing was shown (a hand or shell edit); <b>session</b> = written in a session that looked the rule up for another file.</p>
     ` }));
   }));
 

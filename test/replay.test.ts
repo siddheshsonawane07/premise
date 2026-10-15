@@ -39,9 +39,13 @@ describe('replay rebuilds the live graph', () => {
       'in-cash-load@1 src/wallet/messages.ts in_scope',
       'in-cash-load@1 src/wallet/receipt-email.ts shown',
       'in-cash-load@1 src/wallet/topup.ts asked',
+      'in-cash-load@1 test/admin.test.ts session',
+      'in-cash-load@1 test/core.test.ts session',
       'in-cash-load@1 test/wallet.test.ts asked',
       'us-ctr@1 src/core/cash-intake.ts asked',
       'us-ctr@1 src/markets/us/ctr-report.ts asked',
+      'us-ctr@1 test/core.test.ts session',
+      'us-ctr@1 test/us.test.ts session',
     ]);
   });
 
