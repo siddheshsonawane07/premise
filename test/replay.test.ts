@@ -5,7 +5,8 @@ import { personalLeaks } from '../src/replay/scrub.ts';
 import { deleteTeam, seedDemo } from '../src/replay/seed.ts';
 import { testDb, uniqueTeamId } from './helpers/db.ts';
 
-// The demo seed is the capture of four real agent sessions building Tilldesk (2026-10-15).
+// The demo seed is the capture of five real agent sessions building Tilldesk (2026-10-15), and
+// Chitra recording the early-warning rule, derived from the RBI limit, between the fourth and fifth.
 // Replaying it into an empty team must rebuild the same links the live sessions made.
 
 const EVENTS = 'demo/events/tilldesk.jsonl';
@@ -33,6 +34,7 @@ describe('replay rebuilds the live graph', () => {
       ORDER BY v, path`, {}, { readOnly: true });
     expect(rows.map((r) => `${r.v} ${r.path} ${r.tiers.join(',')}`)).toEqual([
       'in-cash-load@1 src/admin/monthly-compliance.ts asked',
+      'in-cash-load@1 src/admin/weekly-digest.ts asked',
       'in-cash-load@1 src/core/cash-intake.ts asked',
       'in-cash-load@1 src/wallet/index.ts shown',
       'in-cash-load@1 src/wallet/limits.ts asked',
@@ -41,7 +43,10 @@ describe('replay rebuilds the live graph', () => {
       'in-cash-load@1 src/wallet/topup.ts asked',
       'in-cash-load@1 test/admin.test.ts session',
       'in-cash-load@1 test/core.test.ts session',
+      'in-cash-load@1 test/digest.test.ts session',
       'in-cash-load@1 test/wallet.test.ts asked',
+      'in-early-warning@1 src/admin/weekly-digest.ts asked',
+      'in-early-warning@1 test/digest.test.ts session',
       'us-ctr@1 src/core/cash-intake.ts asked',
       'us-ctr@1 src/markets/us/ctr-report.ts asked',
       'us-ctr@1 test/core.test.ts session',

@@ -1,14 +1,16 @@
 {
   "rule": "in-cash-load",
   "change": "₹50,000 → ₹10,000 a month",
-  "note": "Written by hand on 2026-10-15 by reading every Tilldesk file: the files that must change if the full-KYC monthly cash-loading limit drops to ₹10,000. topup.ts uses the constant from limits.ts, and receipt-email.ts and index.ts never use the figure, so none of the three needs a change.",
+  "note": "Written by hand on 2026-10-15 by reading every Tilldesk file: the files that must change if the full-KYC monthly cash-loading limit drops to ₹10,000. topup.ts uses the constant from limits.ts, and receipt-email.ts and index.ts never use the figure, so none of the three needs a change. Updated the same day after a fifth session added src/admin/weekly-digest.ts (a bare 40_000_00) and its test, both of which must change.",
   "needsChange": [
     "src/admin/monthly-compliance.ts",
+    "src/admin/weekly-digest.ts",
     "src/core/cash-intake.ts",
     "src/wallet/limits.ts",
     "src/wallet/messages.ts",
     "test/admin.test.ts",
     "test/core.test.ts",
+    "test/digest.test.ts",
     "test/wallet.test.ts"
   ]
 }

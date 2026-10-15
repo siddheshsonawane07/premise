@@ -10,4 +10,4 @@ coverage/
 .DS_Store
 
 # local capture before scrubbing
-demo/events/raw/
+demo/events/raw*/
