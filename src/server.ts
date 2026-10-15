@@ -49,7 +49,7 @@ export function createApp(db: Db, config: Config, queue: PropagationQueue) {
   // ── Hooks ──────────────────────────────────────────────────────────────
 
   app.post('/hooks/session-start', auth, wrap(async (req, res) => {
-    const b = req.body as { session_id: string; tool?: string; branch?: string };
+    const b = req.body as { session_id: string; tool?: string; branch?: string; model?: string };
     const context = await sessionStart(db, req.who!, b);
     res.json({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } });
   }));

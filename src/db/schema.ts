@@ -34,6 +34,11 @@ export const TEAM_EXTRA_INDEXES: readonly Key[] = [
   ['RuleVersion', 'rule_id'],
 ];
 
+/** Full-text indexes: rule_lookup finds rules by words in their title. */
+export const TEAM_FULLTEXT: readonly Key[] = [
+  ['Rule', 'title'],
+];
+
 export const CONTROL_KEYS: readonly Key[] = [
   ['Team', 'id'],
   ['Member', 'id'],
@@ -44,7 +49,7 @@ export const CONTROL_KEYS: readonly Key[] = [
 export class SchemaMissing extends Error {}
 
 export async function ensureTeamSchema(graph: Graph): Promise<void> {
-  await ensure(graph, TEAM_KEYS, TEAM_EXTRA_INDEXES);
+  await ensure(graph, TEAM_KEYS, TEAM_EXTRA_INDEXES, TEAM_FULLTEXT);
 }
 
 export async function ensureControlSchema(graph: Graph): Promise<void> {
@@ -52,11 +57,14 @@ export async function ensureControlSchema(graph: Graph): Promise<void> {
 }
 
 export async function verifyTeamSchema(graph: Graph): Promise<void> {
-  await verify(graph, TEAM_KEYS, TEAM_EXTRA_INDEXES);
+  await verify(graph, TEAM_KEYS, TEAM_EXTRA_INDEXES, TEAM_FULLTEXT);
 }
 
-async function ensure(graph: Graph, keys: readonly Key[], extra: readonly Key[]): Promise<void> {
+async function ensure(graph: Graph, keys: readonly Key[], extra: readonly Key[], fulltext: readonly Key[] = []): Promise<void> {
   const have = await readSchema(graph);
+  for (const [label, prop] of fulltext) {
+    if (!have.fulltext.has(`${label}.${prop}`)) await run(graph, `CREATE FULLTEXT INDEX FOR (n:${label}) ON (n.${prop})`);
+  }
   for (const [label, prop] of [...keys, ...extra]) {
     if (!have.indexes.has(`${label}.${prop}`)) {
       // Label and property names come from the closed lists above, never from input.
@@ -69,14 +77,15 @@ async function ensure(graph: Graph, keys: readonly Key[], extra: readonly Key[])
     }
   }
   await waitOperational(graph, keys);
-  await verify(graph, keys, extra);
+  await verify(graph, keys, extra, fulltext);
 }
 
-async function verify(graph: Graph, keys: readonly Key[], extra: readonly Key[]): Promise<void> {
+async function verify(graph: Graph, keys: readonly Key[], extra: readonly Key[], fulltext: readonly Key[] = []): Promise<void> {
   const have = await readSchema(graph);
   const missing = [
     ...[...keys, ...extra].filter(([l, p]) => !have.indexes.has(`${l}.${p}`)).map(([l, p]) => `index ${l}.${p}`),
     ...keys.filter(([l, p]) => !have.constraints.has(`${l}.${p}`)).map(([l, p]) => `unique ${l}.${p}`),
+    ...fulltext.filter(([l, p]) => !have.fulltext.has(`${l}.${p}`)).map(([l, p]) => `full-text ${l}.${p}`),
   ];
   if (missing.length) throw new SchemaMissing(`Graph is missing: ${missing.join(', ')}`);
 }
@@ -93,21 +102,24 @@ async function waitOperational(graph: Graph, keys: readonly Key[]): Promise<void
   throw new SchemaMissing('Unique constraints did not become operational');
 }
 
-async function readSchema(graph: Graph): Promise<{ indexes: Set<string>; constraints: Set<string> }> {
+async function readSchema(graph: Graph): Promise<{ indexes: Set<string>; fulltext: Set<string>; constraints: Set<string> }> {
   // A graph that does not exist yet has no indexes; FalkorDB reports that as an error.
   try {
-    const idx = await run<{ label: string; properties: string[]; entitytype: string }>(
-      graph, 'CALL db.indexes() YIELD label, properties, entitytype RETURN label, properties, entitytype', {}, { readOnly: true });
+    const idx = await run<{ label: string; properties: string[]; types: Record<string, string[]>; entitytype: string }>(
+      graph, 'CALL db.indexes() YIELD label, properties, types, entitytype RETURN label, properties, types, entitytype', {}, { readOnly: true });
+    const ofType = (t: string) => new Set(idx.filter((r) => r.entitytype === 'NODE')
+      .flatMap((r) => r.properties.filter((p) => (r.types?.[p] ?? []).includes(t)).map((p) => `${r.label}.${p}`)));
     const con = await run<{ label: string; properties: string[]; status: string; type: string }>(
       graph, 'CALL db.constraints() YIELD type, label, properties, status RETURN type, label, properties, status', {}, { readOnly: true });
     return {
-      indexes: new Set(idx.filter((r) => r.entitytype === 'NODE').flatMap((r) => r.properties.map((p) => `${r.label}.${p}`))),
+      indexes: ofType('RANGE'),
+      fulltext: ofType('FULLTEXT'),
       constraints: new Set(con.filter((r) => r.type === 'UNIQUE' && r.status === 'OPERATIONAL')
         .flatMap((r) => r.properties.map((p) => `${r.label}.${p}`))),
     };
   } catch (err) {
     if (/Invalid graph operation on empty key|empty key/i.test(String(err))) {
-      return { indexes: new Set(), constraints: new Set() };
+      return { indexes: new Set(), fulltext: new Set(), constraints: new Set() };
     }
     throw err;
   }

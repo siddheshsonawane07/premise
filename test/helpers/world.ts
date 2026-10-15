@@ -16,6 +16,7 @@ export interface World {
   asha: Principal;
   ben: Principal;
   chitra: Principal;
+  keys: Record<'asha' | 'ben' | 'chitra', string>;
 }
 
 export async function makeWorld(db: Db): Promise<World> {
@@ -26,7 +27,10 @@ export async function makeWorld(db: Db): Promise<World> {
   const asha = p('asha', 'Asha', 'developer');
   const ben = p('ben', 'Ben', 'developer');
   const chitra = p('chitra', 'Chitra', 'compliance');
-  for (const m of [asha, ben, chitra]) await createMember(db, teamId, { id: m.memberId, name: m.name, role: m.role });
+  const keys = {} as World['keys'];
+  for (const [k, m] of [['asha', asha], ['ben', ben], ['chitra', chitra]] as const) {
+    keys[k] = await createMember(db, teamId, { id: m.memberId, name: m.name, role: m.role });
+  }
 
   const g = db.team(teamId);
   await run(g, TEAM.upsertRepo, { id: 'tilldesk', name: 'Tilldesk' });
@@ -48,7 +52,7 @@ export async function makeWorld(db: Db): Promise<World> {
     figure: 10_000_00, unit: 'cents', citation: '31 CFR 1010.311', effectiveFrom: '2011-03-01',
     status: 'final', scope: ['src/markets/us'],
   });
-  return { teamId, asha, ben, chitra };
+  return { teamId, asha, ben, chitra, keys };
 }
 
 let n = 0;

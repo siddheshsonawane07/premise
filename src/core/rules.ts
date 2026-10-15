@@ -36,6 +36,9 @@ export interface NewRule {
   effectiveFrom: string;
   status: Status;
   scope: string[];
+  /** An internal rule built on another one, e.g. "alert at 80% of the limit". */
+  derivesFrom?: string;
+  how?: string;
 }
 
 /** {child, parent} pairs for every folder above the given paths, for FOLDER_CHAIN. */
@@ -90,6 +93,8 @@ export async function recordRule(db: Db, who: Principal, rule: NewRule): Promise
     figure: figureProps(rule.figure, rule.unit),
     chain: chainFor(rule.scope, true),
     scope: rule.scope,
+    derivesFrom: rule.derivesFrom ?? '',
+    how: rule.how ?? '',
   });
   if (!row) throw new Error(`Unknown jurisdiction ${rule.jurisdiction}`);
   return row;
@@ -115,15 +120,19 @@ export async function lookupRule(
     const served = await one<{ codes: string[] }>(g, TEAM.servedBy, { folders: foldersAbove(args.path) }, { readOnly: true });
     jurisdictions = served?.codes ?? [];
   }
-  let found = await run<RuleVersionView>(g, TEAM.findRule, {
-    query: args.rule, queryLower: args.rule.toLowerCase(), jurisdictions,
-  }, { readOnly: true });
-  // A folder that serves a market only narrows the search; it never hides a rule asked for by id.
-  if (!found.length && !args.jurisdiction && jurisdictions.length) {
-    found = await run<RuleVersionView>(g, TEAM.findRule, {
-      query: args.rule, queryLower: args.rule.toLowerCase(), jurisdictions: [],
+  // By id or exact title words first; then FalkorDB's full-text index, which stems and matches
+  // prefixes ("cash load limit" → "cash loading").
+  const find = async (jur: string[]): Promise<RuleVersionView[]> => {
+    const exact = await run<RuleVersionView>(g, TEAM.findRule, {
+      query: args.rule, queryLower: args.rule.toLowerCase(), jurisdictions: jur,
     }, { readOnly: true });
-  }
+    if (exact.length) return exact;
+    const text = fullTextQuery(args.rule);
+    return text ? run<RuleVersionView>(g, TEAM.searchRules, { text, jurisdictions: jur }, { readOnly: true }) : [];
+  };
+  let found = await find(jurisdictions);
+  // A folder that serves a market only narrows the search; it never hides a rule asked for by id.
+  if (!found.length && !args.jurisdiction && jurisdictions.length) found = await find([]);
   if (!found.length) return { found };
 
   const at = Date.now();
@@ -143,6 +152,17 @@ export async function lookupRule(
     }
   }
   return { found, recordedFor: args.path, proposedScope };
+}
+
+/**
+ * A safe full-text query: words only (the index's own operators are stripped). Any word may
+ * match, stemmed or as a prefix, and the index's score ranks rules matching more words first.
+ * "Cash-load limit!" → "cash|cash*|load|load*|limit|limit*".
+ */
+export function fullTextQuery(input: string): string {
+  const stop = new Set(['the', 'and', 'for', 'per', 'of', 'a', 'an', 'in', 'on', 'to']);
+  const words = (input.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length >= 3 && !stop.has(w)).slice(0, 8);
+  return words.flatMap((w) => [w, `${w}*`]).join('|');
 }
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });

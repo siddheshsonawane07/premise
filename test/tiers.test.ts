@@ -54,6 +54,18 @@ describe('the edit guard', () => {
   });
 });
 
+describe('rule_lookup finds rules by meaning, not exact words (full-text index)', () => {
+  it('"cash load limit" finds "Full-KYC wallet cash loading, per month"', async () => {
+    const res = await lookupRule(db, w.asha, { rule: 'cash load limit', path: 'src/wallet/x.ts' });
+    expect(res.found[0]?.ruleId).toBe('in-cash-load');
+  });
+
+  it('"transaction reporting" finds the US rule; nonsense finds nothing', async () => {
+    expect((await lookupRule(db, w.ben, { rule: 'transaction reporting', path: 'src/markets/us/x.ts' })).found[0]?.ruleId).toBe('us-ctr');
+    expect((await lookupRule(db, w.ben, { rule: 'zzqx', path: 'src/x.ts' })).found).toEqual([]);
+  });
+});
+
 describe('tiers (plan §15.2)', () => {
   it('lookup for this path by this member, then edit → asked', async () => {
     await sessionStart(db, w.asha, { session_id: 's-a1' });

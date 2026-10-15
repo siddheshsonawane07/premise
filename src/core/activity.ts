@@ -59,12 +59,13 @@ export function tierOf(r: { shown: boolean; asked: boolean }): Tier {
 // ── SessionStart ────────────────────────────────────────────────────────────
 
 export async function sessionStart(
-  db: Db, who: Principal, ev: { session_id: string; tool?: string; branch?: string },
+  db: Db, who: Principal, ev: { session_id: string; tool?: string; branch?: string; model?: string },
 ): Promise<string> {
   const g = db.team(who.teamId);
   const at = Date.now();
   await run(g, TEAM.openSession, {
-    session: ev.session_id, member: who.memberId, tool: ev.tool ?? 'claude-code', branch: ev.branch ?? 'unknown', at,
+    session: ev.session_id, member: who.memberId, tool: ev.tool ?? 'claude-code', branch: ev.branch ?? 'unknown',
+    model: typeof ev.model === 'string' ? ev.model.slice(0, 60) : 'unknown', at,
   });
   const prev = await one<{ previous: number | null }>(g, TEAM.previousSession, {
     member: who.memberId, session: ev.session_id,
@@ -153,7 +154,7 @@ async function sessionTier(
   const served = await one<{ codes: string[] }>(g, TEAM.servedBy, { folders: pathsUp(path).slice(1) }, { readOnly: true });
   const markets = served?.codes ?? [];
   return extra
-    .filter((l) => !markets.length || markets.includes(l.jurisdiction))
+    .filter((l) => !markets.length || markets.includes(l.jurisdiction) || l.jurisdiction === 'TEAM')
     .map((l) => ({ versionId: l.versionId, tier: 'session' as const }));
 }
 
@@ -188,7 +189,7 @@ export async function stopSweep(
 ): Promise<string[]> {
   const g = db.team(who.teamId);
   await run(g, TEAM.openSession, {
-    session: ev.session_id, member: who.memberId, tool: 'claude-code', branch: 'unknown', at: Date.now(),
+    session: ev.session_id, member: who.memberId, tool: 'claude-code', branch: 'unknown', model: 'unknown', at: Date.now(),
   });
   const candidates = new Map<string, number>();
   for (const f of ev.files.slice(0, 200)) {

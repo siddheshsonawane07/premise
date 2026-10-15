@@ -45,7 +45,7 @@ async function main() {
   if (cmd === 'session-start') {
     const branch = git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).trim() || 'unknown';
     try {
-      const out = await post('/hooks/session-start', { session_id: input.session_id, tool: 'claude-code', branch });
+      const out = await post('/hooks/session-start', { session_id: input.session_id, tool: 'claude-code', branch, model: input.model });
       process.stdout.write(JSON.stringify(out));
     } catch {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: UNREACHABLE } }));

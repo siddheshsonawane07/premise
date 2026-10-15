@@ -173,7 +173,7 @@ WHERE s.path IN $pathsUp
 MATCH (r)-[:CURRENT]->(v:RuleVersion)
 MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
 WITH DISTINCT served, since, lastEdit, r, v, j
-WHERE size(served) = 0 OR j.code IN served
+WHERE size(served) = 0 OR j.code IN served OR j.code = 'TEAM'
 OPTIONAL MATCH (:Session {id: $session})-[sh:SHOWN {path: $path}]->(v)
 WITH since, lastEdit, r, v, j, count(sh) > 0 AS shown
 OPTIONAL MATCH (:Member {id: $member})<-[:BY]-(lk:Lookup {path: $path})-[:OF]->(v)
@@ -257,6 +257,7 @@ CREATE (v:RuleVersion {id: $ruleId + '@' + toString(top + 1), rule_id: $ruleId, 
                        text: $text, hash: $hash, at: $at, author: $author, citation: $citation,
                        effective_from: $effectiveFrom, status: $status})
 SET v += $figure
+CREATE (v)-[:OF]->(r)
 CREATE (v)-[:PARENT]->(old)
 CREATE (v)-[:SUPERSEDES {reason: $reason}]->(old)
 CREATE (p:Propagation {id: $propagationId, rule_id: $ruleId, at: $at, dry_run: $dryRun, status: 'queued'})

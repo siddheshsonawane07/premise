@@ -171,6 +171,7 @@ CREATE (v:RuleVersion {id: $versionId, rule_id: $ruleId, n: 1, text: $text, hash
                        author: $author, citation: $citation, effective_from: $effectiveFrom, status: $status})
 SET v += $figure
 CREATE (r)-[:CURRENT]->(v)
+CREATE (v)-[:OF]->(r)
 CREATE (r)-[:APPLIES_IN]->(j)
 
 FOREACH (link IN $chain |
@@ -180,7 +181,28 @@ FOREACH (link IN $chain |
 FOREACH (p IN $scope |
   MERGE (f:Folder {path: p})
   MERGE (r)-[:SCOPE {source: 'declared'}]->(f))
+WITH r, v
+OPTIONAL MATCH (base:Rule {id: $derivesFrom})
+FOREACH (b IN CASE WHEN base IS NULL THEN [] ELSE [base] END |
+  CREATE (r)-[:DERIVES_FROM {how: $how}]->(b))
 RETURN r.id AS ruleId, v.id AS versionId
+```
+
+#### `TEAM.searchRules`
+
+Q4d. Find rules by words in their title, through FalkorDB's full-text index (stemmed, prefix matches): "cash load limit" finds "Full-KYC wallet cash loading". Team conventions apply in every market.
+
+```cypher
+CALL db.idx.fulltext.queryNodes('Rule', $text) YIELD node, score
+WITH node AS r, score
+MATCH (r)-[:CURRENT]->(v:RuleVersion)
+MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
+WHERE size($jurisdictions) = 0 OR j.code IN $jurisdictions OR j.code = 'TEAM'
+RETURN r.id AS ruleId, r.title AS title, r.risk AS risk, j.code AS jurisdiction,
+       v.id AS versionId, v.n AS n, v.text AS text, v.figure AS figure, v.unit AS unit,
+       v.citation AS citation, v.effective_from AS effectiveFrom, v.status AS status, score
+ORDER BY score DESC
+LIMIT 5
 ```
 
 #### `TEAM.findRule`
@@ -191,7 +213,7 @@ Q4a. Find a rule's current version by id or by words in its title, optionally by
 MATCH (r:Rule)-[:CURRENT]->(v:RuleVersion)
 MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
 WHERE (r.id = $query OR toLower(r.title) CONTAINS $queryLower)
-  AND (size($jurisdictions) = 0 OR j.code IN $jurisdictions)
+  AND (size($jurisdictions) = 0 OR j.code IN $jurisdictions OR j.code = 'TEAM')
 RETURN r.id AS ruleId, r.title AS title, r.risk AS risk, j.code AS jurisdiction,
        v.id AS versionId, v.n AS n, v.text AS text, v.figure AS figure, v.unit AS unit,
        v.citation AS citation, v.effective_from AS effectiveFrom, v.status AS status
@@ -257,7 +279,7 @@ WHERE s.path IN $pathsUp
 MATCH (r)-[:CURRENT]->(v:RuleVersion)
 MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
 WITH DISTINCT served, since, lastEdit, r, v, j
-WHERE size(served) = 0 OR j.code IN served
+WHERE size(served) = 0 OR j.code IN served OR j.code = 'TEAM'
 OPTIONAL MATCH (:Session {id: $session})-[sh:SHOWN {path: $path}]->(v)
 WITH since, lastEdit, r, v, j, count(sh) > 0 AS shown
 OPTIONAL MATCH (:Member {id: $member})<-[:BY]-(lk:Lookup {path: $path})-[:OF]->(v)
@@ -307,7 +329,7 @@ Q2. Open (or reopen) a session and link it to its member.
 
 ```cypher
 MERGE (s:Session {id: $session})
-ON CREATE SET s.tool = $tool, s.started_at = $at, s.branch = $branch
+ON CREATE SET s.tool = $tool, s.started_at = $at, s.branch = $branch, s.model = $model
 WITH s
 MATCH (m:Member {id: $member})
 MERGE (s)-[:BY]->(m)
@@ -443,6 +465,7 @@ CREATE (v:RuleVersion {id: $ruleId + '@' + toString(top + 1), rule_id: $ruleId, 
                        text: $text, hash: $hash, at: $at, author: $author, citation: $citation,
                        effective_from: $effectiveFrom, status: $status})
 SET v += $figure
+CREATE (v)-[:OF]->(r)
 CREATE (v)-[:PARENT]->(old)
 CREATE (v)-[:SUPERSEDES {reason: $reason}]->(old)
 CREATE (p:Propagation {id: $propagationId, rule_id: $ruleId, at: $at, dry_run: $dryRun, status: 'queued'})
