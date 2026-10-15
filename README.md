@@ -28,7 +28,10 @@ Premise sits between the agents and the code:
 4. **When a rule is a draft**, a dry run shows every place that would change, with no tasks opened.
 5. **When it becomes final**, Premise follows the graph from the old version to every file still
    written under it, opens a review task for the owner of each file, due on the effective date,
-   and a Reviewer agent proposes for each file whether it really needs changing.
+   and a Reviewer agent proposes for each file whether it really needs changing. It also checks
+   every file whose latest content it holds for the old figure in any spelling, so a person's edit
+   that no agent recorded is caught too (`mentions`), and Premise never finds less than `grep`
+   would on the files it has seen.
 6. **Every step is kept**, so the path behind any file can be shown: which session changed it,
    relying on which version of which rule, and what has happened since.
 
@@ -168,7 +171,9 @@ file, kept to the markets the file's folders serve (`session`). It is never reco
 path: rule → the version that changed → the changes that relied on it → the files → the member
 behind each file's latest change. The strongest link, an agent asking for the figure while editing
 a file outside the rule's folders, exists only as an edge in the graph; no folder list, `grep` or
-`git log` holds it.
+`git log` holds it. The graph also decides where a plain text match is wrong: ₹10,000 and $10,000
+are both `10_000_00` in minor units, so a match in a file whose folders serve only another market
+is dropped.
 
 ## The Cypher queries
 
@@ -486,6 +491,11 @@ reset on a schedule, with the rule changes runnable from the browser.
 - **Premise first found only 5 of 7** (before the fifth session): two test files were written in the same session as a lookup
   but never looked up themselves. The fourth tier, `session`, was added to catch exactly that; it
   over-claims by design, and the Reviewer is there to clear what it over-claims.
+- **Premise now also checks for the old figure** (the `mentions` tier), after we saw how well
+  `grep` did. On this demo it adds nothing, because every file holding the figure was already
+  linked through the graph; it is there for edits no agent made. Its first test run caught a
+  false alarm of its own, a US file holding `10_000_00` (dollars, not rupees), and the market
+  check above was added because of it.
 - **The Reviewer has not yet been run against the model**, so whether it clears the three files
   that never use the figure is not yet measured.
 
@@ -507,7 +517,10 @@ measured yet.**
 ## Honest limits
 
 - **Shown is not used.** The `asked` tier and the Reviewer reduce this; nothing removes it.
-- **Lookups depend on the agent following the instruction.** In the four captured sessions every
+- **Premise only checks files it has seen.** Content arrives when an agent reads or edits a file, or
+  when the end-of-turn sweep sends a modified one. Code untouched since before Premise was installed
+  is not checked for the old figure; run `grep` once when installing it.
+- **Lookups depend on the agent following the instruction.** In the five captured sessions every
   agent did, unprompted; an agent that writes a figure from memory produces only weaker links.
 - **An MCP call does not carry Claude Code's session id**, so a lookup is tied to the member, the
   file and the time since the session began, not to the session itself.

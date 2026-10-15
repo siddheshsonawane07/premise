@@ -82,7 +82,7 @@ export function createApp(db: Db, config: Config, queue: PropagationQueue) {
   }));
 
   app.post('/hooks/stop', auth, wrap(async (req, res) => {
-    const b = req.body as { session_id: string; cwd: string; files: { path: string; mtimeMs: number }[] };
+    const b = req.body as { session_id: string; cwd: string; files: { path: string; mtimeMs: number; content?: string }[] };
     await stopSweep(db, req.who!, { session_id: b.session_id, cwd: b.cwd, files: Array.isArray(b.files) ? b.files : [] });
     res.json({});
   }));

@@ -185,7 +185,7 @@ async function writeChange(
  * shell command). It is recorded at tier `in_scope`.
  */
 export async function stopSweep(
-  db: Db, who: Principal, ev: { session_id: string; cwd: string; files: { path: string; mtimeMs: number }[] },
+  db: Db, who: Principal, ev: { session_id: string; cwd: string; files: { path: string; mtimeMs: number; content?: string }[] },
 ): Promise<string[]> {
   const g = db.team(who.teamId);
   await run(g, TEAM.openSession, {
@@ -193,7 +193,11 @@ export async function stopSweep(
   });
   const candidates = new Map<string, number>();
   for (const f of ev.files.slice(0, 200)) {
-    try { candidates.set(toRepoPath(ev.cwd, f.path), Math.floor(f.mtimeMs)); } catch { /* outside the repo */ }
+    let path: string;
+    try { path = toRepoPath(ev.cwd, f.path); } catch { continue; /* outside the repo */ }
+    candidates.set(path, Math.floor(f.mtimeMs));
+    // Kept even when no rule covers the file: a rule change later checks it for the old figure.
+    if (typeof f.content === 'string') await recordSnapshot(db, who, path, f.content);
   }
   if (!candidates.size) return [];
   const last = await run<{ path: string; at: number }>(g, TEAM.lastChangeAt, { paths: [...candidates.keys()] }, { readOnly: true });

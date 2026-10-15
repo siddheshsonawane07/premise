@@ -1,14 +1,14 @@
 :root {
   --bg: #fbfaf8; --fg: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc; --card: #ffffff;
   --accent: #2b59c3; --ok: #1f7a4d; --bad: #b3261e; --warn: #9a6200;
-  --asked: #5b2bb5; --shown: #2b59c3; --in-scope: #6b6a66; --session: #8a6d00;
+  --asked: #5b2bb5; --shown: #2b59c3; --in-scope: #6b6a66; --session: #8a6d00; --mentions: #a3341f;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #151514; --fg: #ecebe8; --muted: #a09f9a; --line: #2e2d2a; --card: #1d1c1a;
     --accent: #8aa9ff; --ok: #5cc48f; --bad: #ff8a80; --warn: #e3b05b;
-    --asked: #b79bff; --shown: #8aa9ff; --in-scope: #a09f9a; --session: #e3c45b;
+    --asked: #b79bff; --shown: #8aa9ff; --in-scope: #a09f9a; --session: #e3c45b; --mentions: #ff8f73;
     color-scheme: dark;
   }
 }
@@ -37,7 +37,7 @@ h2 { font-size: 1.15rem; margin: 1.75rem 0 0.5rem; }
 .receipt { font-size: 1.1rem; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 0.9rem 1.1rem; border-radius: 6px; }
 .badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .badge.ok { color: var(--ok); } .badge.bad { color: var(--bad); } .badge.warn { color: var(--warn); } .badge.muted { color: var(--muted); }
-.badge.tier-asked { color: var(--asked); } .badge.tier-shown { color: var(--shown); } .badge.tier-in_scope { color: var(--in-scope); } .badge.tier-session { color: var(--session); }
+.badge.tier-asked { color: var(--asked); } .badge.tier-shown { color: var(--shown); } .badge.tier-in_scope { color: var(--in-scope); } .badge.tier-session { color: var(--session); } .badge.tier-mentions { color: var(--mentions); }
 table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.95rem; }
 th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }

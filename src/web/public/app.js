@@ -11,7 +11,7 @@
     RuleVersion: v('--accent'), Rule: v('--accent'), Jurisdiction: v('--warn'),
     ReviewTask: v('--bad'), Verdict: v('--asked'),
   };
-  var tierColour = { asked: v('--asked'), shown: v('--shown'), in_scope: v('--in-scope'), session: v('--session') };
+  var tierColour = { asked: v('--asked'), shown: v('--shown'), in_scope: v('--in-scope'), session: v('--session'), mentions: v('--mentions') };
   window.cytoscape({
     container: el,
     elements: g.nodes.map(function (n) { return { data: { id: n.id, label: n.kind + '\n' + n.label, kind: n.kind, sp: !!n.sp } }; })

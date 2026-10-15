@@ -399,12 +399,15 @@ export const TEAM = {
     MATCH (p:Propagation {id: $id})-[:FROM]->(old:RuleVersion)
     MATCH (p)-[:TO]->(nv:RuleVersion)
     MATCH (r:Rule {id: p.rule_id})-[:APPLIES_IN]->(j:Jurisdiction)
+    OPTIONAL MATCH (a:Member) WHERE a.id = nv.author
     RETURN p.id AS id, p.status AS status, p.dry_run AS dryRun, p.at AS at, r.id AS ruleId, r.title AS title,
+           a.id AS authorId, a.name AS authorName,
            j.code AS jurisdiction, old.id AS fromId, old.figure AS oldFigure, nv.id AS toId, nv.figure AS newFigure,
            nv.unit AS unit, nv.status AS newStatus, nv.effective_from AS effectiveFrom, nv.text AS newText,
            old.text AS oldText, nv.citation AS citation,
            p.files_total AS filesTotal, p.needs_review AS needsReview, p.cleared AS cleared,
-           p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.session AS session, p.derived AS derived, p.unknown AS unknown`,
+           p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.session AS session, p.derived AS derived,
+           p.mentions AS mentions, p.unknown AS unknown`,
 
   /** Propagations not yet done: re-queued at start-up. */
   unfinishedPropagations: `
@@ -464,6 +467,30 @@ export const TEAM = {
     RETURN f.path AS path, ownerId, ownerName, via,
            CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown'
                 WHEN 'in_scope' IN tiers THEN 'in_scope' ELSE 'session' END AS tier
+    ORDER BY path`,
+
+  /**
+   * Q12c. Files whose latest known content still spells the old figure, including files no agent
+   * ever changed (a person's edit, sent by the end-of-session sweep). The graph does the coarse
+   * CONTAINS; the code then checks each match is a whole number. The same digits mean different
+   * things in different markets (₹10,000 and $10,000 are both 10_000_00 in minor units), so a file
+   * whose folders serve only other markets is dropped. Owner: the member behind the file's latest
+   * change, if any; otherwise the propagation falls back to whoever changed the rule.
+   */
+  textMatches: `
+    MATCH (f:File)-[:LATEST]->(s:FileSnapshot)
+    WHERE any(term IN $terms WHERE s.content CONTAINS term)
+    OPTIONAL MATCH (f)-[:IN*1..12]->(:Folder)-[:SERVES]->(sj:Jurisdiction)
+    WITH f, s, collect(DISTINCT sj.code) AS served
+    WHERE size(served) = 0 OR $jurisdiction IN served OR $jurisdiction = 'TEAM'
+    OPTIONAL MATCH (t:ReviewTask {status: 'resolved'})-[:FOR]->(f), (t)-[:BECAUSE]->(:Propagation)-[:TO]->(:RuleVersion {id: $toId})
+    WITH f, s, count(t) AS resolved
+    WHERE resolved = 0
+    OPTIONAL MATCH (f)<-[:TO]-(lc:Change)-[:IN]->(:Session)-[:BY]->(m:Member)
+    WITH f, s, lc, m
+    ORDER BY lc.at DESC
+    WITH f, s, collect(m.id)[0] AS ownerId, collect(m.name)[0] AS ownerName
+    RETURN f.path AS path, s.content AS content, ownerId, ownerName
     ORDER BY path`,
 
   /** The rules a derived rule is built on, and how, for the Reviewer's prompt. */
@@ -545,7 +572,8 @@ export const TEAM = {
   finishPropagation: `
     MATCH (p:Propagation {id: $id})
     SET p.status = 'done', p.files_total = $filesTotal, p.needs_review = $needsReview, p.cleared = $cleared,
-        p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.session = $session, p.derived = $derived, p.unknown = $unknown
+        p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.session = $session, p.derived = $derived,
+        p.mentions = $mentions, p.unknown = $unknown
     RETURN p.id AS id`,
 
   /**

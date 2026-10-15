@@ -176,3 +176,37 @@ export function formatFigure(figure?: number, unit?: string): string {
   if (unit === 'percent') return `${figure}%`;
   return String(figure);
 }
+
+/**
+ * The ways a person writes a figure in code or copy. 5000000 paise → 5000000, 5_000_000,
+ * 5,000,000, 50_00_000, 50,00,000 (Indian grouping), 50000, 50_000, 50,000 and 50_000_00 (rupees
+ * with the paise written after). Numbers under four digits are skipped: a bare 80 is everywhere.
+ */
+export function figureSpellings(figure?: number, unit?: string): string[] {
+  if (typeof figure !== 'number' || !Number.isInteger(figure)) return [];
+  const minor = (unit === 'paise' || unit === 'cents') && figure % 100 === 0;
+  const out = new Set<string>();
+  for (const n of minor ? [figure, figure / 100] : [figure]) {
+    const s = String(n);
+    if (s.length < 4) continue;
+    out.add(s);
+    for (const sep of ['_', ',']) { out.add(group(s, sep, false)); out.add(group(s, sep, true)); }
+  }
+  if (minor && String(figure / 100).length >= 4) {
+    out.add(`${group(String(figure / 100), '_', false)}_00`);
+    out.add(`${group(String(figure / 100), '_', true)}_00`);
+  }
+  return [...out];
+}
+
+function group(digits: string, sep: string, indian: boolean): string {
+  if (!indian) return digits.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+  const head = digits.slice(0, -3);
+  return head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, sep)}${sep}${digits.slice(-3)}` : digits;
+}
+
+/** True if the text holds one of the spellings as a whole number: 50,000 matches, 150,000 and 50,000.5 do not. */
+export function mentionsFigure(text: string, spellings: string[]): boolean {
+  // Spellings are digits, '_' and ',' only, none of which needs escaping in a pattern.
+  return spellings.some((s) => new RegExp(`(?<![\\d_.,])${s}(?![\\d_]|[.,]\\d)`).test(text));
+}

@@ -54,10 +54,20 @@ async function main() {
   }
 
   if (cmd === 'stop') {
-    // Modified and new files, relative to cwd, with their modification times.
+    // Modified and new files, relative to cwd, with their modification times, and the content of
+    // small text files so a later rule change can check them for the old figure.
     const listed = git(cwd, ['ls-files', '--modified', '--others', '--exclude-standard']).split('\n').filter(Boolean);
+    let budget = 4_000_000; // the server accepts 5 MB a request
     const files = [...new Set(listed)].slice(0, 200).flatMap((rel) => {
-      try { return [{ path: path.join(cwd, rel), mtimeMs: fs.statSync(path.join(cwd, rel)).mtimeMs }]; } catch { return []; }
+      try {
+        const full = path.join(cwd, rel);
+        const st = fs.statSync(full);
+        const file = { path: full, mtimeMs: st.mtimeMs };
+        if (st.size > 100_000 || st.size > budget) return [file];
+        budget -= st.size;
+        const content = fs.readFileSync(full, 'utf8');
+        return [content.includes('\u0000') ? file : { ...file, content }];
+      } catch { return []; }
     });
     try { await post('/hooks/stop', { session_id: input.session_id, cwd, files }); } catch { /* never block Stop */ }
     return;

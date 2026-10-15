@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Principal } from '../auth.ts';
 import { type Db, one, run } from '../db/client.ts';
 import { TEAM } from '../db/queries.ts';
-import { figureProps, formatFigure, type Status, type Unit, versionHash } from './rules.ts';
+import { figureProps, figureSpellings, formatFigure, mentionsFigure, type Status, type Unit, versionHash } from './rules.ts';
 import type { Tier } from './activity.ts';
 
 // A rule changes: a draft gets a dry run (what would change, no tasks); a final moves CURRENT
@@ -93,13 +93,53 @@ export interface PropagationView {
   inScope?: number;
   session?: number;
   derived?: number;
+  mentions?: number;
   unknown?: number;
+  authorId?: string;
+  authorName?: string;
 }
 
-export interface Finding { path: string; tier: Tier; ownerId: string; ownerName: string; via?: string[]; onlyVia?: boolean }
+/** `mentions`: no edit relied on the rule, but the file's latest content still spells the old figure. */
+export interface Finding { path: string; tier: Tier | 'mentions'; ownerId: string; ownerName: string; via?: string[]; onlyVia?: boolean }
 
 export async function getPropagation(db: Db, teamId: string, id: string): Promise<PropagationView | undefined> {
   return one<PropagationView>(db.team(teamId), TEAM.propagation, { id }, { readOnly: true });
+}
+
+/**
+ * Every file a rule change reaches: edits that relied on the old version, edits made under rules
+ * derived from it, and files that still spell the old figure though no recorded edit relied on
+ * the rule (a person's edit, or code from before Premise). A file found more than one way keeps
+ * its strongest link.
+ */
+export async function findAffected(
+  db: Db, teamId: string,
+  p: {
+    ruleId: string; jurisdiction: string; fromId: string; toId: string; oldFigure?: number; unit?: string;
+    authorId?: string; authorName?: string;
+  },
+): Promise<{ found: Finding[]; derived: Finding[] }> {
+  const g = db.team(teamId);
+  const found = await run<Finding>(g, TEAM.affectedFiles, { fromId: p.fromId, toId: p.toId }, { readOnly: true });
+  // Code written under rules derived from this one ("alert at 80% of the limit") is affected too.
+  const derived = await run<Finding>(g, TEAM.affectedViaDerived, { ruleId: p.ruleId, toId: p.toId }, { readOnly: true });
+  for (const d of derived) {
+    const same = found.find((f) => f.path === d.path);
+    if (same) same.via = d.via;
+    else found.push({ ...d, onlyVia: true });
+  }
+  const terms = figureSpellings(p.oldFigure, p.unit);
+  if (terms.length) {
+    const texts = await run<{ path: string; content: string; ownerId: string | null; ownerName: string | null }>(
+      g, TEAM.textMatches, { terms, toId: p.toId, jurisdiction: p.jurisdiction }, { readOnly: true });
+    for (const t of texts) {
+      if (found.some((f) => f.path === t.path) || !mentionsFigure(t.content, terms)) continue;
+      const ownerId = t.ownerId ?? p.authorId;
+      if (!ownerId) continue;
+      found.push({ path: t.path, tier: 'mentions', ownerId, ownerName: t.ownerName ?? p.authorName ?? ownerId });
+    }
+  }
+  return { found: found.sort((a, b) => a.path.localeCompare(b.path)), derived };
 }
 
 /**
@@ -113,14 +153,7 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
   if (!p) throw new Error(`Unknown propagation ${id}`);
   await run(g, TEAM.setPropagationStatus, { id, status: 'running' });
 
-  const found = await run<Finding>(g, TEAM.affectedFiles, { fromId: p.fromId, toId: p.toId }, { readOnly: true });
-  // Code written under rules derived from this one ("alert at 80% of the limit") is affected too.
-  const derived = await run<Finding>(g, TEAM.affectedViaDerived, { ruleId: p.ruleId, toId: p.toId }, { readOnly: true });
-  for (const d of derived) {
-    const same = found.find((f) => f.path === d.path);
-    if (same) same.via = d.via;
-    else found.push({ ...d, onlyVia: true });
-  }
+  const { found, derived } = await findAffected(db, teamId, p);
   const viaIds = [...new Set(derived.flatMap((d) => d.via ?? []))];
   const derivedInfo = viaIds.length
     ? await run<DerivedRule>(g, TEAM.derivedRules, { ruleId: p.ruleId, ids: viaIds }, { readOnly: true })
@@ -167,6 +200,7 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
     inScope: review_.filter((f) => f.tier === 'in_scope').length,
     session: review_.filter((f) => f.tier === 'session').length,
     derived: found.filter((f) => f.onlyVia).length,
+    mentions: review_.filter((f) => f.tier === 'mentions').length,
     unknown: found.filter((f) => verdicts.get(f.path)?.verdict === 'unknown').length,
   });
   return (await getPropagation(db, teamId, id))!;
@@ -180,7 +214,7 @@ export function receipt(p: PropagationView, now = Date.now()): string {
   if (p.status !== 'done') return `${what} Propagation ${p.status}.`;
   const tiers = [
     p.asked ? `${p.asked} asked` : '', p.shown ? `${p.shown} shown` : '', p.inScope ? `${p.inScope} in scope` : '',
-    p.session ? `${p.session} same session` : '',
+    p.session ? `${p.session} same session` : '', p.mentions ? `${p.mentions} still showing the old figure` : '',
   ].filter(Boolean).join(', ');
   const viaDerived = p.derived ? `; ${p.derived} only through a rule derived from this one` : '';
   const total = p.filesTotal ?? 0;

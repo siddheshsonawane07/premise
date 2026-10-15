@@ -3,7 +3,8 @@ import { onRead, postEdit, sessionStart, stopSweep } from '../src/core/activity.
 import {
   claimTask, handOff, NotAllowed, receipt, resolveTask, type Review, runPropagation, supersede,
 } from '../src/core/change.ts';
-import { lookupRule } from '../src/core/rules.ts';
+import { figureSpellings, lookupRule, mentionsFigure } from '../src/core/rules.ts';
+import { TEAM } from '../src/db/queries.ts';
 import { why } from '../src/core/why.ts';
 import { auditCsv, auditPack } from '../src/core/audit.ts';
 import { type Db, run } from '../src/db/client.ts';
@@ -194,6 +195,33 @@ describe('audit evidence', () => {
 
   it('an unknown rule has no evidence pack', async () => {
     expect(await auditPack(db, w.chitra, 'no-such-rule')).toBeUndefined();
+  });
+});
+
+describe('files no recorded edit relied on', () => {
+  it('a person\'s edit that still spells the old figure is found; a bigger number with the same digits is not', async () => {
+    // Out of every rule's folders, edited by hand: the sweep sends the content, no Change is recorded.
+    await stopSweep(db, w.ben, { session_id: 'ben-hand', cwd: ROOT, files: [
+      { path: `${ROOT}/src/admin/export.ts`, mtimeMs: Date.now() + 5000, content: 'const CAP = "₹10,000 a month";' },
+      { path: `${ROOT}/src/admin/fees.ts`, mtimeMs: Date.now() + 5000, content: 'const BIG = 110_000_00; const RATE = 10_000.5;' },
+    ] });
+    const r = await supersede(db, w.chitra, { ...IN_DRAFT, figure: 5_000_00, text: 'Capped at ₹5,000 a month (draft).' });
+    const p = await runPropagation(db, w.teamId, r.propagationId, fakeReview);
+    const found = await run<{ path: string; tier: string; owner: string }>(db.team(w.teamId), TEAM.findings, { id: r.propagationId }, { readOnly: true });
+    expect(found.find((f) => f.path === 'src/admin/export.ts')).toMatchObject({ tier: 'mentions', owner: 'Chitra' });
+    expect(found.find((f) => f.path === 'src/admin/fees.ts')).toBeUndefined();
+    // $10,000 is also 10_000_00, but that file's folder serves only the US.
+    expect(found.find((f) => f.path === 'src/markets/us/ctr-report.ts')).toBeUndefined();
+    expect(p.mentions).toBe(1);
+    expect(receipt(p)).toContain('1 still showing the old figure');
+  });
+
+  it('spellings cover the ways the figure is written, and only whole numbers match', () => {
+    const s = figureSpellings(50_000_00, 'paise');
+    expect(s).toEqual(expect.arrayContaining(['5000000', '5,000,000', '50,00,000', '50000', '50,000', '50_000', '50_000_00']));
+    expect(mentionsFigure('if (x > 40_000_00)', figureSpellings(40_000_00, 'paise'))).toBe(true);
+    expect(mentionsFigure('const y = 150_000_00;', s)).toBe(false);
+    expect(figureSpellings(80, 'percent')).toEqual([]);
   });
 });
 
