@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { onRead, postEdit, sessionStart, stopSweep } from '../src/core/activity.ts';
 import {
-  claimTask, NotAllowed, receipt, resolveTask, type Review, runPropagation, supersede,
+  claimTask, handOff, NotAllowed, receipt, resolveTask, type Review, runPropagation, supersede,
 } from '../src/core/change.ts';
 import { lookupRule } from '../src/core/rules.ts';
 import { why } from '../src/core/why.ts';
@@ -194,5 +194,28 @@ describe('audit evidence', () => {
 
   it('an unknown rule has no evidence pack', async () => {
     expect(await auditPack(db, w.chitra, 'no-such-rule')).toBeUndefined();
+  });
+});
+
+describe('handoff', () => {
+  it('the assignee hands a task on with a note; the claim ends; the next session of the new owner opens with the note', async () => {
+    const [t] = await run<{ id: string; who: string }>(db.team(w.teamId),
+      "MATCH (t:ReviewTask {status: 'open'})-[:FOR]->(:File {path: 'src/wallet/limits.ts'}) MATCH (t)-[:ASSIGNED]->(m) RETURN t.id AS id, m.name AS who");
+    expect(t!.who).toBe('Asha');
+    await expect(handOff(db, w.asha, t!.id, 'ben', 'short')).rejects.toBeInstanceOf(NotAllowed);
+    const r = await handOff(db, w.asha, t!.id, 'ben', 'Limit moves to 10_000_00; tests in wallet.test.ts need the new boundary too');
+    expect(r).toEqual({ fromName: 'Asha', toName: 'Ben' });
+    const [claims] = await run<{ live: number }>(db.team(w.teamId),
+      'MATCH (c:Claim)-[:ON]->(:ReviewTask {id: $id}) WHERE c.expires_at > $now RETURN count(c) AS live', { id: t!.id, now: Date.now() + 1 });
+    expect(claims!.live).toBe(0);
+    const ctx = await sessionStart(db, w.ben, { session_id: 'ben-handoff' });
+    expect(ctx).toContain('Handed to you by Asha: "Limit moves to 10_000_00');
+    expect(ctx).not.toContain('undefined');
+  });
+
+  it('someone who is neither the assignee nor compliance cannot hand it on', async () => {
+    const [t] = await run<{ id: string }>(db.team(w.teamId),
+      "MATCH (t:ReviewTask)-[:FOR]->(:File {path: 'src/wallet/limits.ts'}) MATCH (t)-[:ASSIGNED]->(:Member {name: 'Ben'}) RETURN t.id AS id");
+    await expect(handOff(db, w.asha, t!.id, 'asha', 'taking it back without asking')).rejects.toBeInstanceOf(NotAllowed);
   });
 });

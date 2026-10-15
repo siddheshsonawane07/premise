@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { Principal } from '../auth.ts';
 import type { Db } from '../db/client.ts';
-import { claimTask, getPropagation, receipt, resolveTask, supersede } from '../core/change.ts';
+import { claimTask, getPropagation, handOff, receipt, resolveTask, supersede } from '../core/change.ts';
 import { formatFigure, lookupRule, recordRule } from '../core/rules.ts';
 import { myTasks } from '../core/tasks.ts';
 import { why } from '../core/why.ts';
@@ -94,7 +94,8 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
     if (!tasks.length) return text('No open review tasks.');
     return text(tasks.map((t) =>
       `${t.taskId}: ${t.path} — ${t.title}: ${formatFigure(t.oldFigure, t.unit)} → ${formatFigure(t.newFigure, t.unit)}. ` +
-      `Due ${t.due}. Status ${t.status}.${t.verdict ? ` Reviewer: ${t.verdict} (${t.verdictReason}).` : ''}`).join('\n'));
+      `Due ${t.due}. Status ${t.status}.${t.verdict ? ` Reviewer: ${t.verdict} (${t.verdictReason}).` : ''}` +
+      `${t.handoffNote ? ` Handed to you by ${t.handoffFrom}: "${t.handoffNote}"` : ''}`).join('\n'));
   });
 
   server.registerTool('supersede', {
@@ -147,6 +148,19 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
   }, async ({ task_id, reason }) => {
     const ok = await resolveTask(db, who, task_id, reason);
     return text(ok ? `Resolved ${task_id}.` : `${task_id} is not open.`);
+  });
+
+  server.registerTool('hand_off_task', {
+    title: 'Hand a review task to a teammate',
+    description: 'Pass a review task to a teammate with a note on what they need to know. Their next session opens with it.',
+    inputSchema: z.object({
+      task_id: z.string().min(3).max(60),
+      to: z.string().min(2).max(60).describe('Teammate, e.g. asha'),
+      note: z.string().min(10).max(500),
+    }),
+  }, async ({ task_id, to, note }) => {
+    const r = await handOff(db, who, task_id, to, note);
+    return text(`Handed ${task_id} from ${r.fromName} to ${r.toName}.`);
   });
 
   return server;

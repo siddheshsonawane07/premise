@@ -15,6 +15,9 @@ export interface MyTask {
   unit?: string;
   verdict?: string;
   verdictReason?: string;
+  assigneeName: string;
+  handoffNote?: string;
+  handoffFrom?: string;
 }
 
 export async function myTasks(db: Db, who: Principal): Promise<MyTask[]> {

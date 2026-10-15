@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import type { Principal } from '../auth.ts';
-import { getPropagation, NotAllowed, type PropagationView, receipt, resolveTask, supersede } from '../core/change.ts';
+import { getPropagation, handOff, NotAllowed, type PropagationView, receipt, resolveTask, supersede } from '../core/change.ts';
 import { formatFigure } from '../core/rules.ts';
 import { auditCsv, auditPack } from '../core/audit.ts';
 import { impact, overlayPaths, shortestToRegulators } from '../core/impact.ts';
@@ -245,6 +245,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
   // ── Tasks ────────────────────────────────────────────────────────────────
   r.get('/tasks', wrap(async (_req, res, who) => {
     const tasks = await run<TaskRow>(db.team(who.teamId), TEAM.allTasks, { now: Date.now() }, { readOnly: true });
+    const members = await run<{ id: string; name: string }>(db.team(who.teamId), TEAM.listMembers, {}, { readOnly: true });
     const groups = [['open', 'Open'], ['proposed_clear', 'Reviewer proposes to clear'], ['resolved', 'Resolved']] as const;
     res.send(page({ title: 'Tasks', who: who.name, active: '/tasks', body: html`
       <h1>Review tasks</h1>
@@ -257,10 +258,19 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
           <td>${status === 'resolved' ? html`<span class="small">${t.resolvedReason ?? ''}</span>` : html`
             <form method="post" action="/tasks/${t.taskId}/resolve" class="inline">
               <input name="reason" required minlength="10" maxlength="500" placeholder="Reason" value="${status === 'proposed_clear' ? 'Confirmed the Reviewer: the file does not use the figure' : ''}">
-              <button>${status === 'proposed_clear' ? 'confirm clear' : 'resolve'}</button></form>`}</td>
+              <button>${status === 'proposed_clear' ? 'confirm clear' : 'resolve'}</button></form>
+            <details class="small"><summary>hand off</summary><form method="post" action="/tasks/${t.taskId}/hand-off" class="inline">
+              <select name="to">${members.filter((m) => m.name !== t.assignee).map((m) => html`<option value="${m.id}">${m.name}</option>`)}</select>
+              <input name="note" required minlength="10" maxlength="500" placeholder="What they need to know">
+              <button>hand off</button></form></details>`}</td>
         </tr>`)}</tbody></table>` : html`<p class="muted">None.</p>`}`;
       })}
     ` }));
+  }));
+
+  r.post('/tasks/:id/hand-off', wrap(async (req, res, who) => {
+    await handOff(db, who, String(req.params.id), String(req.body.to ?? ''), String(req.body.note ?? ''));
+    res.redirect(303, '/tasks');
   }));
 
   r.post('/tasks/:id/resolve', wrap(async (req, res, who) => {

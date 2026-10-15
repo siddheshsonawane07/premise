@@ -203,6 +203,22 @@ export async function claimTask(db: Db, who: Principal, taskId: string, minutes 
   return { claimed: false, holder: holder?.name };
 }
 
+/**
+ * Hand a task to a teammate with a note. The current assignee may hand it on, and so may the
+ * compliance role; nobody else.
+ */
+export async function handOff(db: Db, who: Principal, taskId: string, to: string, note: string): Promise<{ fromName: string; toName: string }> {
+  if (note.trim().length < 10) throw new NotAllowed('A handoff needs a note (at least 10 characters) saying what the next person needs to know.');
+  const g = db.team(who.teamId);
+  const current = await one<{ id: string }>(g, TEAM.taskAssignee, { taskId }, { readOnly: true });
+  if (!current) throw new NotAllowed(`Task ${taskId} does not exist or is closed.`);
+  if (current.id !== who.memberId && who.role !== 'compliance') throw new NotAllowed('Only the assignee or the compliance role can hand this task on.');
+  const toId = to.includes('.') ? to : `${who.teamId}.${to.toLowerCase()}`;
+  const row = await one<{ fromName: string; toName: string }>(g, TEAM.handOff, { taskId, to: toId, note: note.trim().slice(0, 500), at: Date.now(), by: who.memberId });
+  if (!row) throw new NotAllowed(`Could not hand ${taskId} to ${to}: no such teammate, or the task is closed.`);
+  return row;
+}
+
 export async function resolveTask(db: Db, who: Principal, taskId: string, reason: string): Promise<boolean> {
   if (reason.trim().length < 10) throw new NotAllowed('A task is resolved only with a reason (at least 10 characters).');
   const row = await one(db.team(who.teamId), TEAM.resolveTask, { taskId, reason: reason.trim(), at: Date.now(), member: who.memberId });

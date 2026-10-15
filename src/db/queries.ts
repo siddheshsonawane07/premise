@@ -260,17 +260,47 @@ export const TEAM = {
 
   /** Q18. A member's review tasks, soonest due first. */
   myTasks: `
-    MATCH (t:ReviewTask)-[:ASSIGNED]->(:Member {id: $member})
+    MATCH (t:ReviewTask)-[:ASSIGNED]->(me:Member {id: $member})
     WHERE t.status IN ['open', 'proposed_clear']
     MATCH (t)-[:FOR]->(f:File)
     MATCH (t)-[:BECAUSE]->(p:Propagation)-[:TO]->(nv:RuleVersion)
     MATCH (p)-[:FROM]->(ov:RuleVersion)
     MATCH (r:Rule {id: p.rule_id})
     OPTIONAL MATCH (t)-[:HAS]->(vd:Verdict)
-    RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, f.path AS path,
+    OPTIONAL MATCH (t)-[h:HANDED_OFF]->(me)
+    RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, f.path AS path, me.name AS assigneeName,
            r.id AS ruleId, r.title AS title, ov.figure AS oldFigure, nv.figure AS newFigure, nv.unit AS unit,
-           vd.verdict AS verdict, vd.reason AS verdictReason
+           vd.verdict AS verdict, vd.reason AS verdictReason, h.note AS handoffNote, h.from_name AS handoffFrom
     ORDER BY due`,
+
+  /**
+   * Q17b. Hand a task to someone else, with a note, in one query: the ASSIGNED edge moves, the
+   * handoff is kept as an edge carrying the note (not a pasted summary), and any live claim on
+   * the task ends. The new owner's next session opens with the note.
+   */
+  handOff: `
+    MATCH (t:ReviewTask {id: $taskId})-[a:ASSIGNED]->(prev:Member)
+    WHERE t.status IN ['open', 'proposed_clear']
+    MATCH (to:Member {id: $to})
+    OPTIONAL MATCH (c:Claim)-[:ON]->(t)
+    WHERE c.expires_at > $at
+    WITH t, a, prev, to, collect(c) AS claims
+    FOREACH (x IN claims | SET x.expires_at = $at)
+    DELETE a
+    CREATE (t)-[:ASSIGNED]->(to)
+    CREATE (t)-[:HANDED_OFF {note: $note, at: $at, from: prev.id, from_name: prev.name, by: $by}]->(to)
+    RETURN prev.name AS fromName, to.name AS toName`,
+
+  /** Who is on the team, for handing a task to. */
+  listMembers: `
+    MATCH (m:Member)
+    RETURN m.id AS id, m.name AS name, m.role AS role
+    ORDER BY name`,
+
+  /** Who a task is assigned to now. */
+  taskAssignee: `
+    MATCH (:ReviewTask {id: $taskId})-[:ASSIGNED]->(m:Member)
+    RETURN m.id AS id`,
 
   /** Q6. What a hook (or a deny) just showed this session for this path. */
   markShown: `

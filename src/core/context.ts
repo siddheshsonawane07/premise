@@ -42,6 +42,8 @@ export interface TaskLine {
   unit?: string;
   claimBy?: string;
   claimExpires?: number;
+  handoffNote?: string;
+  handoffFrom?: string;
 }
 
 export function ruleLine(r: RuleLine): string {
@@ -63,7 +65,8 @@ export function taskLine(t: TaskLine, now = Date.now()): string {
   const fig = typeof t.newFigure === 'number' ? ` New figure: ${formatFigure(t.newFigure, t.unit)}.` : '';
   const claim = t.claimBy ? ` Claimed by ${t.claimBy}.` : '';
   const what = t.status === 'proposed_clear' ? 'Review task (the Reviewer proposes it can be cleared)' : 'OPEN REVIEW TASK';
-  return `- ${what} ${t.taskId}${t.path ? ` on ${t.path}` : ''}: rule ${t.ruleId} changed; assigned to ${t.assigneeName}, ${when}.${fig}${claim}`;
+  const handoff = t.handoffNote ? ` Handed to you by ${t.handoffFrom ?? 'a teammate'}: "${t.handoffNote}"` : '';
+  return `- ${what} ${t.taskId}${t.path ? ` on ${t.path}` : ''}: rule ${t.ruleId} changed; assigned to ${t.assigneeName}, ${when}.${fig}${claim}${handoff}`;
 }
 
 export function forRead(path: string, rules: RuleLine[], tasks: TaskLine[]): string | undefined {
