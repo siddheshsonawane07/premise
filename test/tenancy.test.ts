@@ -72,7 +72,7 @@ describe('team A cannot reach team B (plan §15.1)', () => {
   it('rule_lookup does not find B\'s rule, by id or by words', async () => {
     for (const rule of ['b-secret', 'Zanzibar settlement']) {
       const out = await mcp(a.keys.ben, 'rule_lookup', { rule, path: 'src/zanzibar/settle.ts' });
-      expect(out).toContain('No rule matches');
+      expect(out).toContain('No recorded rule matches');
       expect(out).not.toContain('42');
     }
   });

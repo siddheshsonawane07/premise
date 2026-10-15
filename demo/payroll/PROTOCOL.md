@@ -78,6 +78,23 @@ measurement.
 fails because of a Premise bug, the bug is fixed, the whole run is restarted from an empty
 repository and team, and the restart is reported with the results.
 
+## Restarts
+
+**Restart 1, 2026-10-16 00:49 IST: session 1 stopped without writing code.** Premise held the EPF
+wage ceiling but not the contribution rates (12% from each side, 8.33% of it to EPS), and its
+reply for a rule it does not hold was "Ask the user; do not guess the figure." The agent obeyed.
+It wrote nothing and listed the rates it needed. No team's registry holds every figure, so this is
+a Premise bug, not a quirk of the test. Two fixes:
+- **The not-found reply now offers a path.** An agent that can cite a source records the figure
+  with `record_rule`, passing the file it is writing, and uses it. The rule stays a draft until the
+  compliance member confirms or corrects it, and the file is linked to it, so a correction finds
+  the file. With no citable source, the agent still asks.
+- **A developer's agent can no longer record a *final* rule** through `record_rule`. Before this
+  fix it could, which bypassed the rule that only compliance makes anything final.
+
+The prompts, rules and scoring are unchanged. The Tallyroll repository was reset to its empty
+commit, the team rebuilt and the capture discarded before the rerun.
+
 ## Results
 
 Not yet run.

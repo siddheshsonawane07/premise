@@ -40,9 +40,10 @@ Around that core:
 - **Rules built on rules.** An internal rule such as "alert at 80% of the cash limit"
   `DERIVES_FROM` the regulation; a change to the regulation also reaches code written under the
   derived rule, which never mentions the regulation.
-- **FalkorDB's graph algorithms do the analysis.** `algo.SPpaths` draws the shortest connection
-  from a file to each regulator; `algo.pageRank` ranks the rules others are built on;
-  `algo.WCC` finds rules coupled through shared code. Rule search uses FalkorDB's full-text index.
+- **Before changing a rule: what will it touch?** The Impact page counts the files each rule
+  reaches, directly and through rules derived from it, and names the files that sit under several
+  rules at once (`algo.WCC`), where fixing one rule can break another. The Why page draws the
+  shortest connection from a file to each regulator (`algo.SPpaths`).
 - **Audit evidence per rule:** every version, approver and reason, every AI change made under it
   (file, member, session, model, tier), every review and its resolution; as a page, JSON or CSV.
 - **Handoffs:** a task passed to a teammate carries a note; their next session opens with it.

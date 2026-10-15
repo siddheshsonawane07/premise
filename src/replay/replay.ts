@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Principal } from '../auth.ts';
 import { onRead, postEdit, preEdit, sessionStart, stopSweep, type ToolEvent } from '../core/activity.ts';
-import { lookupRule, type NewRule, recordRule } from '../core/rules.ts';
+import { agentRecordRule, lookupRule, type NewRule } from '../core/rules.ts';
 import { type Db, one } from '../db/client.ts';
 import { CONTROL } from '../db/queries.ts';
 import { normalisePath } from '../mcp/tools.ts';
@@ -60,8 +60,8 @@ export async function replay(db: Db, teamId: string, events: CapturedEvent[]): P
           await lookupRule(db, p, { rule: a.rule ?? '', path: normalisePath(a.path ?? ''), jurisdiction: a.jurisdiction });
         } else if (params?.name === 'record_rule' && params.arguments) {
           // A rule recorded during the captured sessions is applied where it happened in time.
-          const a = params.arguments as unknown as Omit<NewRule, 'owner'>;
-          await recordRule(db, p, { ...a, owner: p.memberId, scope: a.scope.map(normalisePath) });
+          const a = params.arguments as unknown as Omit<NewRule, 'owner'> & { path?: string };
+          await agentRecordRule(db, p, { ...a, scope: a.scope.map(normalisePath), path: a.path ? normalisePath(a.path) : undefined });
         } else {
           skipped++;
           continue;

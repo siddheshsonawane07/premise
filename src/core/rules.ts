@@ -100,6 +100,25 @@ export async function recordRule(db: Db, who: Principal, rule: NewRule): Promise
   return row;
 }
 
+/**
+ * record_rule as an agent calls it. No team's registry holds every figure, so an agent that
+ * knows one from a citable source records it rather than stopping. Only the compliance role
+ * records a final rule; anyone else's is a draft until compliance confirms or corrects it. With
+ * a path, the file being written is linked to the new rule at once, exactly as a lookup would,
+ * so a correction later finds it.
+ */
+export async function agentRecordRule(
+  db: Db, who: Principal, args: Omit<NewRule, 'owner'> & { path?: string },
+): Promise<{ ruleId: string; versionId: string; status: Status; downgraded: boolean; recordedFor?: string }> {
+  const { path, ...rule } = args;
+  const status: Status = who.role === 'compliance' ? rule.status : 'draft';
+  const r = await recordRule(db, who, { ...rule, status, owner: who.memberId });
+  const linked = path
+    ? await lookupRule(db, who, { rule: r.ruleId, path, jurisdiction: rule.jurisdiction === 'TEAM' ? undefined : rule.jurisdiction })
+    : undefined;
+  return { ...r, status, downgraded: status !== rule.status, recordedFor: linked?.recordedFor };
+}
+
 export interface LookupResult {
   found: RuleVersionView[];
   recordedFor?: string;

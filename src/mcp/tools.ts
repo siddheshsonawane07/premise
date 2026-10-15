@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Principal } from '../auth.ts';
 import type { Db } from '../db/client.ts';
 import { claimTask, getPropagation, handOff, receipt, resolveTask, supersede } from '../core/change.ts';
-import { formatFigure, lookupRule, recordRule } from '../core/rules.ts';
+import { agentRecordRule, formatFigure, lookupRule } from '../core/rules.ts';
 import { myTasks } from '../core/tasks.ts';
 import { why } from '../core/why.ts';
 import { PathOutsideRepo } from '../paths.ts';
@@ -47,7 +47,12 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
     }),
   }, async ({ rule, path, jurisdiction }) => {
     const res = await lookupRule(db, who, { rule, path: normalisePath(path), jurisdiction });
-    if (!res.found.length) return text(`No rule matches "${rule}". Ask the user; do not guess the figure.`);
+    if (!res.found.length) {
+      return text(`No recorded rule matches "${rule}". If you know the figure from a source you can cite (a regulation, ` +
+        'a circular, a team decision), record it with record_rule, passing this path, and use it: it stays a draft until ' +
+        'the compliance member confirms or corrects it, and if they correct it this file is found. ' +
+        'If you cannot cite a source, ask the user; do not guess.');
+    }
     const lines = res.found.map((v) =>
       `[${v.jurisdiction}] ${v.title} (rule id ${v.ruleId}, version ${v.n}, ${v.status}): ` +
       `${formatFigure(v.figure, v.unit) || 'no single figure'}. ${v.text} ` +
@@ -63,6 +68,8 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
   server.registerTool('record_rule', {
     title: 'Record a rule',
     description: 'Record a new rule (regulation, decision or constraint) with its first version, citation and the folders it governs. ' +
+      'Use it when rule_lookup finds nothing for a figure you can cite. Pass the path of the file you are writing so that file is linked to the rule. ' +
+      'Only the compliance role records a final rule; anyone else\'s is a draft until compliance confirms it. ' +
       'An internal rule built on another (for example "alert at 80% of the cash limit") names it in derivesFrom, so a change to the base rule also reaches code written under this one.',
     inputSchema: z.object({
       id: z.string().regex(/^[a-z0-9-]{3,40}$/),
@@ -79,10 +86,15 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
       scope: z.array(z.string().min(1).max(200)).max(10),
       derivesFrom: z.string().regex(/^[a-z0-9-]{3,40}$/).optional().describe('Id of the rule this one is built on'),
       how: z.string().max(200).optional().describe('How it is derived, e.g. "80% of the limit"'),
+      path: RepoPath.optional().describe('The file you are writing with this figure'),
     }),
   }, async (args) => {
-    const r = await recordRule(db, who, { ...args, owner: who.memberId, scope: args.scope.map(normalisePath) });
-    return text(`Recorded ${r.ruleId} as version ${r.versionId}.`);
+    const r = await agentRecordRule(db, who, {
+      ...args, scope: args.scope.map(normalisePath), path: args.path ? normalisePath(args.path) : undefined,
+    });
+    return text(`Recorded ${r.ruleId} as version ${r.versionId} (${r.status})` +
+      `${r.downgraded ? ': only the compliance role records a final rule, so it is a draft until they confirm it' : ''}.` +
+      `${r.recordedFor ? ` ${r.recordedFor} relies on it.` : ''}`);
   });
 
   server.registerTool('my_tasks', {

@@ -3,7 +3,7 @@ import { onRead, postEdit, sessionStart, stopSweep } from '../src/core/activity.
 import {
   claimTask, handOff, NotAllowed, receipt, resolveTask, type Review, runPropagation, supersede,
 } from '../src/core/change.ts';
-import { figureSpellings, lookupRule, mentionsFigure } from '../src/core/rules.ts';
+import { agentRecordRule, figureSpellings, lookupRule, mentionsFigure } from '../src/core/rules.ts';
 import { TEAM } from '../src/db/queries.ts';
 import { why } from '../src/core/why.ts';
 import { auditCsv, auditPack } from '../src/core/audit.ts';
@@ -224,6 +224,31 @@ describe('files no recorded edit relied on', () => {
     expect(figureSpellings(80, 'percent')).toEqual([]);
     expect(figureSpellings(684_00, 'cents')).toEqual(expect.arrayContaining(['68400', '684_00']));
     expect(figureSpellings(684_00, 'cents')).not.toContain('684');
+  });
+});
+
+describe('a figure the registry does not hold', () => {
+  it('a developer\'s agent records it as a draft, never final, and the file it writes is linked at once', async () => {
+    await sessionStart(db, w.asha, { session_id: 'asha-rate' });
+    const r = await agentRecordRule(db, w.asha, {
+      id: 'in-wallet-fee', title: 'Wallet top-up fee', type: 'decision', risk: 'low', jurisdiction: 'IN',
+      text: 'Card top-ups carry a 2% fee.', figure: 2, unit: 'percent', citation: 'Pricing decision, 2026-10-01',
+      effectiveFrom: '2026-10-01', status: 'final', scope: ['src/wallet'], path: 'src/wallet/fees.ts',
+    });
+    expect(r).toMatchObject({ versionId: 'in-wallet-fee@1', status: 'draft', downgraded: true, recordedFor: 'src/wallet/fees.ts' });
+    await postEdit(db, w.asha, writeEv('asha-rate', 'src/wallet/fees.ts', 'export const TOP_UP_FEE_PERCENT = 2;'));
+    const [rel] = await run<{ tier: string }>(db.team(w.teamId),
+      "MATCH (:Change)-[r:RELIED_ON]->(:RuleVersion {id: 'in-wallet-fee@1'}) RETURN r.tier AS tier");
+    expect(rel?.tier).toBe('asked');
+  });
+
+  it('the compliance role may record a final rule directly', async () => {
+    const r = await agentRecordRule(db, w.chitra, {
+      id: 'in-kyc-expiry', title: 'Minimum-KYC wallet expiry', type: 'regulation', risk: 'medium', jurisdiction: 'IN',
+      text: 'A minimum-KYC wallet must be upgraded within 24 months.', citation: 'RBI Master Direction on PPIs, 2021',
+      effectiveFrom: '2021-08-27', status: 'final', scope: ['src/wallet'],
+    });
+    expect(r).toMatchObject({ status: 'final', downgraded: false });
   });
 });
 
