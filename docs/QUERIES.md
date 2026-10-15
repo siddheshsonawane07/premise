@@ -398,6 +398,15 @@ CREATE (t)-[:HANDED_OFF {note: $note, at: $at, from: prev.id, from_name: prev.na
 RETURN prev.name AS fromName, to.name AS toName
 ```
 
+#### `TEAM.currentHash`
+
+The content hash of a rule's current version: an imported rules file that changed gets a new version.
+
+```cypher
+MATCH (:Rule {id: $id})-[:CURRENT]->(v:RuleVersion)
+RETURN v.hash AS hash
+```
+
 #### `TEAM.listMembers`
 
 Who is on the team, for handing a task to.

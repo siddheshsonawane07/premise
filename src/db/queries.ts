@@ -291,6 +291,11 @@ export const TEAM = {
     CREATE (t)-[:HANDED_OFF {note: $note, at: $at, from: prev.id, from_name: prev.name, by: $by}]->(to)
     RETURN prev.name AS fromName, to.name AS toName`,
 
+  /** The content hash of a rule's current version: an imported rules file that changed gets a new version. */
+  currentHash: `
+    MATCH (:Rule {id: $id})-[:CURRENT]->(v:RuleVersion)
+    RETURN v.hash AS hash`,
+
   /** Who is on the team, for handing a task to. */
   listMembers: `
     MATCH (m:Member)
