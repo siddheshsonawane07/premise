@@ -62,13 +62,14 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
 
   server.registerTool('record_rule', {
     title: 'Record a rule',
-    description: 'Record a new rule (regulation, decision or constraint) with its first version, citation and the folders it governs.',
+    description: 'Record a new rule (regulation, decision or constraint) with its first version, citation and the folders it governs. ' +
+      'An internal rule built on another (for example "alert at 80% of the cash limit") names it in derivesFrom, so a change to the base rule also reaches code written under this one.',
     inputSchema: z.object({
       id: z.string().regex(/^[a-z0-9-]{3,40}$/),
       title: z.string().min(3).max(120),
       type: z.enum(['regulation', 'decision', 'constraint']),
       risk: z.enum(['low', 'medium', 'high']),
-      jurisdiction: z.enum(['IN', 'US']),
+      jurisdiction: z.enum(['IN', 'US', 'TEAM']),
       text: z.string().min(3).max(1000),
       figure: z.number().int().optional(),
       unit: z.enum(['paise', 'cents', 'percent', 'none']).optional(),
@@ -76,6 +77,8 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
       effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       status: z.enum(['draft', 'final']),
       scope: z.array(z.string().min(1).max(200)).max(10),
+      derivesFrom: z.string().regex(/^[a-z0-9-]{3,40}$/).optional().describe('Id of the rule this one is built on'),
+      how: z.string().max(200).optional().describe('How it is derived, e.g. "80% of the limit"'),
     }),
   }, async (args) => {
     const r = await recordRule(db, who, { ...args, owner: who.memberId, scope: args.scope.map(normalisePath) });

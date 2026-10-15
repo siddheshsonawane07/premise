@@ -59,7 +59,11 @@ export interface ReviewJob {
   newFigure?: number;
   unit?: string;
   path: string;
+  /** Derived rules that linked this file to the changed rule, and how each is derived. */
+  via?: DerivedRule[];
 }
+
+export interface DerivedRule { ruleId: string; title: string; text: string; figure?: number; unit?: string; how: string[] }
 
 export const noReviewer: Review = async () => ({ verdict: 'unknown', reason: 'No reviewer model is configured' });
 
@@ -88,10 +92,11 @@ export interface PropagationView {
   shown?: number;
   inScope?: number;
   session?: number;
+  derived?: number;
   unknown?: number;
 }
 
-export interface Finding { path: string; tier: Tier; ownerId: string; ownerName: string }
+export interface Finding { path: string; tier: Tier; ownerId: string; ownerName: string; via?: string[]; onlyVia?: boolean }
 
 export async function getPropagation(db: Db, teamId: string, id: string): Promise<PropagationView | undefined> {
   return one<PropagationView>(db.team(teamId), TEAM.propagation, { id }, { readOnly: true });
@@ -109,9 +114,20 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
   await run(g, TEAM.setPropagationStatus, { id, status: 'running' });
 
   const found = await run<Finding>(g, TEAM.affectedFiles, { fromId: p.fromId, toId: p.toId }, { readOnly: true });
+  // Code written under rules derived from this one ("alert at 80% of the limit") is affected too.
+  const derived = await run<Finding>(g, TEAM.affectedViaDerived, { ruleId: p.ruleId, toId: p.toId }, { readOnly: true });
+  for (const d of derived) {
+    const same = found.find((f) => f.path === d.path);
+    if (same) same.via = d.via;
+    else found.push({ ...d, onlyVia: true });
+  }
+  const viaIds = [...new Set(derived.flatMap((d) => d.via ?? []))];
+  const derivedInfo = viaIds.length
+    ? await run<DerivedRule>(g, TEAM.derivedRules, { ruleId: p.ruleId, ids: viaIds }, { readOnly: true })
+    : [];
   for (let i = 0; i < found.length; i += 50) {
     await run(g, TEAM.writeFindings, {
-      id, files: found.slice(i, i + 50).map((f) => ({ path: f.path, tier: f.tier, owner: f.ownerName })),
+      id, files: found.slice(i, i + 50).map((f) => ({ path: f.path, tier: f.tier, owner: f.ownerName, via: (f.via ?? []).join(', ') })),
     });
   }
 
@@ -121,6 +137,7 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
     const results = await Promise.all(batch.map((f) => review(db, teamId, {
       propagationId: id, ruleId: p.ruleId, title: p.title, jurisdiction: p.jurisdiction, fromId: p.fromId, toId: p.toId,
       oldText: p.oldText, newText: p.newText, oldFigure: p.oldFigure, newFigure: p.newFigure, unit: p.unit, path: f.path,
+      via: derivedInfo.filter((d) => f.via?.includes(d.ruleId)),
     }).catch((err): Verdict => ({ verdict: 'unknown', reason: `Reviewer failed: ${err instanceof Error ? err.message : err}` }))));
     batch.forEach((f, j) => verdicts.set(f.path, results[j]!));
   }
@@ -149,6 +166,7 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
     shown: review_.filter((f) => f.tier === 'shown').length,
     inScope: review_.filter((f) => f.tier === 'in_scope').length,
     session: review_.filter((f) => f.tier === 'session').length,
+    derived: found.filter((f) => f.onlyVia).length,
     unknown: found.filter((f) => verdicts.get(f.path)?.verdict === 'unknown').length,
   });
   return (await getPropagation(db, teamId, id))!;
@@ -164,9 +182,10 @@ export function receipt(p: PropagationView, now = Date.now()): string {
     p.asked ? `${p.asked} asked` : '', p.shown ? `${p.shown} shown` : '', p.inScope ? `${p.inScope} in scope` : '',
     p.session ? `${p.session} same session` : '',
   ].filter(Boolean).join(', ');
+  const viaDerived = p.derived ? `; ${p.derived} only through a rule derived from this one` : '';
   const total = p.filesTotal ?? 0;
   const head = `${total} file${total === 1 ? ' was' : 's were'} changed under the old version`;
-  const review = `${p.needsReview ?? 0} ${p.dryRun ? 'would need' : 'need'} review${tiers ? ` (${tiers})` : ''}`;
+  const review = `${p.needsReview ?? 0} ${p.dryRun ? 'would need' : 'need'} review${tiers ? ` (${tiers}${viaDerived})` : ''}`;
   const cleared = p.cleared ? `, ${p.cleared} the Reviewer ${p.dryRun ? 'would clear' : 'proposes to clear'}` : '';
   if (p.dryRun) return `Dry run, no tasks opened. ${what} ${head}: ${review}${cleared}.`;
   const days = Math.ceil((Date.parse(`${p.effectiveFrom}T00:00:00Z`) - now) / 86_400_000);

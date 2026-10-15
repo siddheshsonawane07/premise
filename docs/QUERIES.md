@@ -493,7 +493,7 @@ RETURN p.id AS id, p.status AS status, p.dry_run AS dryRun, p.at AS at, r.id AS 
        nv.unit AS unit, nv.status AS newStatus, nv.effective_from AS effectiveFrom, nv.text AS newText,
        old.text AS oldText, nv.citation AS citation,
        p.files_total AS filesTotal, p.needs_review AS needsReview, p.cleared AS cleared,
-       p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.session AS session, p.unknown AS unknown
+       p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.session AS session, p.derived AS derived, p.unknown AS unknown
 ```
 
 #### `TEAM.unfinishedPropagations`
@@ -540,6 +540,39 @@ RETURN f.path AS path, ownerId, ownerName,
 ORDER BY path
 ```
 
+#### `TEAM.affectedViaDerived`
+
+Q12b. Rules built on the changed rule. An internal rule such as "alert at 80% of the cash limit" DERIVES_FROM the regulation, so when the regulation changes, code written under the derived rule is affected too, even though it never relied on the regulation itself. Follows DERIVES_FROM up to four hops, then back along RELIED_ON from each derived rule's current version to the files.
+
+```cypher
+MATCH (:Rule {id: $ruleId})<-[:DERIVES_FROM*1..4]-(d:Rule)-[:CURRENT]->(dv:RuleVersion)
+MATCH (dv)<-[rel:RELIED_ON]-(:Change)-[:TO]->(f:File)
+WITH f, collect(DISTINCT d.id) AS via, collect(rel.tier) AS tiers
+OPTIONAL MATCH (t:ReviewTask {status: 'resolved'})-[:FOR]->(f), (t)-[:BECAUSE]->(:Propagation)-[:TO]->(:RuleVersion {id: $toId})
+WITH f, via, tiers, count(t) AS resolved
+WHERE resolved = 0
+MATCH (f)<-[:TO]-(lc:Change)-[:IN]->(:Session)-[:BY]->(m:Member)
+WITH f, via, tiers, lc, m
+ORDER BY lc.at DESC
+WITH f, via, tiers, collect(m.id)[0] AS ownerId, collect(m.name)[0] AS ownerName
+RETURN f.path AS path, ownerId, ownerName, via,
+       CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown'
+            WHEN 'in_scope' IN tiers THEN 'in_scope' ELSE 'session' END AS tier
+ORDER BY path
+```
+
+#### `TEAM.derivedRules`
+
+The rules a derived rule is built on, and how, for the Reviewer's prompt.
+
+```cypher
+MATCH chain = (:Rule {id: $ruleId})<-[:DERIVES_FROM*1..4]-(d:Rule)
+WHERE d.id IN $ids
+MATCH (d)-[:CURRENT]->(dv:RuleVersion)
+RETURN d.id AS ruleId, d.title AS title, dv.text AS text, dv.figure AS figure, dv.unit AS unit,
+       [x IN relationships(chain) | x.how] AS how
+```
+
 #### `TEAM.writeFindings`
 
 Q13. What a propagation found, dry run or final, with who would own each file.
@@ -549,7 +582,7 @@ MATCH (p:Propagation {id: $id})
 UNWIND $files AS x
 MATCH (f:File {path: x.path})
 MERGE (p)-[e:FOUND]->(f)
-SET e.tier = x.tier, e.owner = x.owner
+SET e.tier = x.tier, e.owner = x.owner, e.via = x.via
 RETURN count(e) AS found
 ```
 
@@ -563,7 +596,7 @@ MATCH (p)-[:TO]->(nv:RuleVersion)
 OPTIONAL MATCH (t:ReviewTask)-[:BECAUSE]->(p), (t)-[:FOR]->(f)
 OPTIONAL MATCH (t)-[:HAS]->(tv:Verdict)
 OPTIONAL MATCH (f)-[:LATEST]->(:FileSnapshot)<-[:ON]-(sv:Verdict)-[:AGAINST]->(nv)
-RETURN f.path AS path, e.tier AS tier, e.owner AS owner, t.id AS taskId, t.status AS taskStatus,
+RETURN f.path AS path, e.tier AS tier, e.owner AS owner, e.via AS via, t.id AS taskId, t.status AS taskStatus,
        coalesce(tv.verdict, sv.verdict) AS verdict, coalesce(tv.reason, sv.reason) AS reason,
        coalesce(tv.patch, sv.patch) AS patch
 ORDER BY path
@@ -642,7 +675,7 @@ The receipt's numbers, as plain number properties (a map cannot be a property).
 ```cypher
 MATCH (p:Propagation {id: $id})
 SET p.status = 'done', p.files_total = $filesTotal, p.needs_review = $needsReview, p.cleared = $cleared,
-    p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.session = $session, p.unknown = $unknown
+    p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.session = $session, p.derived = $derived, p.unknown = $unknown
 RETURN p.id AS id
 ```
 

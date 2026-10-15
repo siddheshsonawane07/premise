@@ -95,6 +95,9 @@ function prompt(job: ReviewJob, snapshot: string, others: Other[]): string {
     `Rule: ${job.title} [${job.jurisdiction}]`,
     `OLD version: ${formatFigure(job.oldFigure, job.unit)}. ${job.oldText}`,
     `NEW version: ${formatFigure(job.newFigure, job.unit)}. ${job.newText}`,
+    job.via?.length
+      ? `This file was written under rules DERIVED from the changed rule, so it can depend on the changed figure without naming it:\n${job.via.map((d) => `- ${d.title}: ${formatFigure(d.figure, d.unit)}. ${d.text} (derived: ${d.how.filter(Boolean).join('; ') || 'built on it'})`).join('\n')}`
+      : '',
     others.length
       ? `This file also relies on (keep these correct):\n${others.map((o) => `- [${o.jurisdiction}] ${o.title}: ${formatFigure(o.figure, o.unit)}. ${o.text}`).join('\n')}`
       : '',
