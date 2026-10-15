@@ -53,7 +53,10 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
       `${formatFigure(v.figure, v.unit) || 'no single figure'}. ${v.text} ` +
       `Citation: ${v.citation}. Effective ${v.effectiveFrom}.`);
     if (res.recordedFor) lines.push(`Recorded: ${res.recordedFor} relies on this.`);
-    if (res.proposedScope) lines.push(`${res.proposedScope} was outside the rule's scope; a scope widening was proposed.`);
+    if (res.proposedScope) {
+      lines.push(`${res.proposedScope} was outside the rule's declared folders. It is linked to the rule anyway (it will be ` +
+        'found when the rule changes), and widening the scope was proposed so the rule is also shown to whoever reads this file.');
+    }
     return text(lines.join('\n'));
   });
 

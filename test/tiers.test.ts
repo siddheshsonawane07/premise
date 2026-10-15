@@ -131,10 +131,11 @@ describe('tiers (plan §15.2)', () => {
     await sessionStart(db, w.asha, { session_id: 's-a7' });
     const recorded = await stopSweep(db, w.asha, {
       session_id: 's-a7', cwd: ROOT,
-      files: [{ path: 'src/wallet/messages.ts', mtimeMs: Date.now() + 1000 }, { path: 'src/index.ts', mtimeMs: Date.now() + 1000 }],
+      files: [{ path: 'src/wallet/messages.ts', mtimeMs: Date.now() + 60_000 }, { path: 'src/index.ts', mtimeMs: Date.now() + 1000 }],
     });
     expect(recorded).toEqual(['src/wallet/messages.ts']);
-    expect(await tiersOf('stop:s-a7:src/wallet/messages.ts')).toEqual({ 'in-cash-load@1': 'in_scope' });
+    const [stopId] = await run<{ id: string }>(db.team(w.teamId), "MATCH (c:Change) WHERE c.id STARTS WITH 'stop:s-a7:src/wallet/messages.ts' RETURN c.id AS id");
+    expect(await tiersOf(stopId!.id)).toEqual({ 'in-cash-load@1': 'in_scope' });
   });
 
   it('stores only repo-relative paths', async () => {

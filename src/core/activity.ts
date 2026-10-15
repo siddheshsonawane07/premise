@@ -157,32 +157,32 @@ async function writeChange(
 // ── Stop: edits made outside the agent's tools ──────────────────────────────
 
 /**
- * `git status` at the end of a turn: any modified file in some rule's scope, changed since the
- * session began, with no recorded change from this session, is recorded at tier `in_scope`.
+ * `git` at the end of a turn: any modified or new file in some rule's scope that is newer on disk
+ * than anything Premise recorded for it was changed outside the agent's tools (by hand, or by a
+ * shell command). It is recorded at tier `in_scope`.
  */
 export async function stopSweep(
   db: Db, who: Principal, ev: { session_id: string; cwd: string; files: { path: string; mtimeMs: number }[] },
 ): Promise<string[]> {
   const g = db.team(who.teamId);
-  const started = await one<{ startedAt: number }>(g, TEAM.openSession, {
+  await run(g, TEAM.openSession, {
     session: ev.session_id, member: who.memberId, tool: 'claude-code', branch: 'unknown', at: Date.now(),
   });
-  const since = started?.startedAt ?? Date.now() - SIX_HOURS;
-  const candidates: string[] = [];
+  const candidates = new Map<string, number>();
   for (const f of ev.files.slice(0, 200)) {
-    if (f.mtimeMs < since) continue;
-    try { candidates.push(toRepoPath(ev.cwd, f.path)); } catch { /* outside the repo */ }
+    try { candidates.set(toRepoPath(ev.cwd, f.path), Math.floor(f.mtimeMs)); } catch { /* outside the repo */ }
   }
-  if (!candidates.length) return [];
-  const done = await one<{ paths: string[] }>(g, TEAM.changedInSession, {
-    session: ev.session_id, paths: candidates,
-  }, { readOnly: true });
+  if (!candidates.size) return [];
+  const last = await run<{ path: string; at: number }>(g, TEAM.lastChangeAt, { paths: [...candidates.keys()] }, { readOnly: true });
+  const lastAt = new Map(last.map((r) => [r.path, r.at]));
   const recorded: string[] = [];
-  for (const path of candidates.filter((p) => !done?.paths.includes(p))) {
+  for (const [path, mtime] of candidates) {
+    // Two seconds of slack: the agent's own edit lands on disk just before its hook records it.
+    if ((lastAt.get(path) ?? 0) + 2000 >= mtime) continue;
     const rules = await scopedRules(db, who, ev.session_id, path);
     if (!rules.length) continue;
     const r = await writeChange(db, who, {
-      session: ev.session_id, tool: 'claude-code', path, changeId: `stop:${ev.session_id}:${path}`,
+      session: ev.session_id, tool: 'claude-code', path, changeId: `stop:${ev.session_id}:${path}:${mtime}`,
       diff: '(edited outside the agent\'s tools; found by git status at the end of the turn)',
       relied: rules.map((x) => ({ versionId: x.versionId, tier: 'in_scope' as const })),
     });

@@ -42,6 +42,19 @@ export const CONTROL = {
     MATCH (t:Team)
     RETURN t.id AS id`,
 
+  /** Removing a team (the demo reset): keys, then members, then the team. */
+  deleteTeamKeys: `
+    MATCH (:Team {id: $id})<-[:IN]-(:Member)<-[:FOR]-(k:Key)
+    DETACH DELETE k`,
+
+  deleteTeamMembers: `
+    MATCH (:Team {id: $id})<-[:IN]-(m:Member)
+    DETACH DELETE m`,
+
+  deleteTeam: `
+    MATCH (t:Team {id: $id})
+    DETACH DELETE t`,
+
   /** The web view acts as one member, chosen by id on the server (never by the browser). */
   principalById: `
     MATCH (m:Member {id: $id})-[:IN]->(t:Team)
@@ -550,9 +563,9 @@ export const TEAM = {
     RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, m.name AS assignee, m.id AS assigneeId,
            nv.id AS versionId, p.id AS propagationId, vd.id AS verdictId, vd.verdict AS verdict, vd.reason AS verdictReason`,
 
-  /** Q9a. Of these paths, which already have a change from this session. */
-  changedInSession: `
-    MATCH (:Session {id: $session})<-[:IN]-(:Change)-[:TO]->(f:File)
+  /** Q9a. When Premise last recorded a change to each of these paths. */
+  lastChangeAt: `
+    MATCH (f:File)<-[:TO]-(c:Change)
     WHERE f.path IN $paths
-    RETURN collect(DISTINCT f.path) AS paths`,
+    RETURN f.path AS path, max(c.at) AS at`,
 } as const;

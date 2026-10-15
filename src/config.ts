@@ -13,6 +13,10 @@ const Env = z.object({
   DEMO_WEB_KEY: z.string().optional(),
   PREMISE_WEB_MEMBER: z.string().optional(),
   CAPTURE_DIR: z.string().optional(),
+  // Live site: rebuild the demo team from the committed capture when it is missing, and every
+  // N minutes if set (visitors' changes are wiped; the page says so).
+  DEMO_SEED: z.enum(['on', 'off']).default('off'),
+  DEMO_RESET_MINUTES: z.coerce.number().int().min(5).optional(),
 });
 
 export type Config = z.infer<typeof Env>;
