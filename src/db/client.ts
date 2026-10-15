@@ -19,6 +19,10 @@ const TEAM_ID = /^[a-z][a-z0-9_]{1,30}$/;
 // How long to wait for FalkorDB before declaring it unreachable. The server-side
 // TIMEOUT_DEFAULT (2 s) bounds query execution; this bounds the network wait.
 const CLIENT_WAIT_MS = 2500;
+// While the connection is known to be down, give up fast so an edit hook can deny well
+// inside its 5-second timeout. Cleared by the next successful reply.
+const DOWN_WAIT_MS = 600;
+let downSince: number | undefined;
 
 export function teamGraphName(teamId: string): string {
   if (!TEAM_ID.test(teamId)) throw new Error(`Invalid team id: ${teamId}`);
@@ -33,6 +37,16 @@ export class Db {
       FalkorDB.connect({ url, password, socket: { connectTimeout: CLIENT_WAIT_MS } }),
       CLIENT_WAIT_MS,
     );
+    // Without a listener, a dropped socket's 'error' event would end the process. The client
+    // reconnects by itself; until it does, queries fail fast with DbUnreachable.
+    let lastLog = 0;
+    client.on('error', (err: unknown) => {
+      downSince ??= Date.now();
+      if (Date.now() - lastLog > 10_000) {
+        lastLog = Date.now();
+        console.error('premise: FalkorDB connection error:', err instanceof Error ? err.message : err);
+      }
+    });
     return new Db(client);
   }
 
@@ -45,7 +59,9 @@ export class Db {
   }
 
   async listGraphs(): Promise<string[]> {
-    return withDeadline(this.client.list(), CLIENT_WAIT_MS);
+    const list = await withDeadline(this.client.list(), downSince ? DOWN_WAIT_MS : CLIENT_WAIT_MS);
+    downSince = undefined;
+    return list;
   }
 
   async close(): Promise<void> {
@@ -62,7 +78,9 @@ export async function run<T = Record<string, unknown>>(
 ): Promise<T[]> {
   const options = { params: params as never, TIMEOUT: opts.timeoutMs ?? 2000 };
   const call = opts.readOnly ? graph.roQuery<T>(cypher, options) : graph.query<T>(cypher, options);
-  const reply = await withDeadline(call, (opts.timeoutMs ?? 2000) + CLIENT_WAIT_MS);
+  const wait = downSince ? DOWN_WAIT_MS : (opts.timeoutMs ?? 2000) + CLIENT_WAIT_MS;
+  const reply = await withDeadline(call, wait);
+  downSince = undefined;
   return reply.data ?? [];
 }
 
