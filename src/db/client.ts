@@ -50,6 +50,18 @@ export class Db {
     return new Db(client);
   }
 
+  /** Connect, retrying while FalkorDB is still starting (a fresh container, or a host that starts the app first). */
+  static async connectWithRetry(url: string, password?: string, attempts = 15): Promise<Db> {
+    for (let i = 1; ; i++) {
+      try {
+        return await Db.connect(url, password);
+      } catch (err) {
+        if (!(err instanceof DbUnreachable) || i >= attempts) throw err;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+  }
+
   control(): Graph {
     return this.client.selectGraph(CONTROL_GRAPH);
   }

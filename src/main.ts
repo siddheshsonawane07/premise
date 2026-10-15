@@ -14,7 +14,7 @@ const DEMO_EVENTS = 'demo/events/tilldesk.jsonl';
 
 async function main() {
   const config = loadConfig();
-  const db = await Db.connect(config.FALKORDB_URL, config.FALKORDB_PASSWORD);
+  const db = await Db.connectWithRetry(config.FALKORDB_URL, config.FALKORDB_PASSWORD);
   await ensureControlSchema(db.control());
   if (config.DEMO_SEED === 'on' && !(await teamExists(db, config.DEMO_TEAM_ID))) {
     await seedDemo(db, config.DEMO_TEAM_ID, DEMO_EVENTS);

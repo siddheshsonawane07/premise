@@ -10,7 +10,7 @@ import { Db } from '../src/db/client.ts';
 import { seedDemo } from '../src/replay/seed.ts';
 
 const config = loadConfig();
-const db = await Db.connect(config.FALKORDB_URL, config.FALKORDB_PASSWORD);
+const db = await Db.connectWithRetry(config.FALKORDB_URL, config.FALKORDB_PASSWORD);
 const events = process.argv.includes('--replay') ? 'demo/events/tilldesk.jsonl' : undefined;
 const keys = await seedDemo(db, config.DEMO_TEAM_ID, events);
 const lines = Object.entries(keys).map(([id, k]) => `PREMISE_KEY_${id.toUpperCase()}=${k}`);
