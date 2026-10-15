@@ -48,10 +48,10 @@ export function buildMcpServer(db: Db, who: Principal, queue: PropagationQueue):
   }, async ({ rule, path, jurisdiction }) => {
     const res = await lookupRule(db, who, { rule, path: normalisePath(path), jurisdiction });
     if (!res.found.length) {
-      return text(`No recorded rule matches "${rule}". If you know the figure from a source you can cite (a regulation, ` +
-        'a circular, a team decision), record it with record_rule, passing this path, and use it: it stays a draft until ' +
-        'the compliance member confirms or corrects it, and if they correct it this file is found. ' +
-        'If you cannot cite a source, ask the user; do not guess.');
+      return text(`No recorded rule matches "${rule}". If you know the figure, record it with record_rule, passing this ` +
+        'path, and use it: it stays a draft until the compliance member confirms or corrects it, and if they correct it ' +
+        'this file is found. Cite your source, or write "unverified: from memory" as the citation if you have none. ' +
+        'Only if you do not know the figure, ask the user.');
     }
     const lines = res.found.map((v) =>
       `[${v.jurisdiction}] ${v.title} (rule id ${v.ruleId}, version ${v.n}, ${v.status}): ` +

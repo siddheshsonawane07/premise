@@ -7,8 +7,10 @@ export const MAX_CONTEXT = 9_000;
 
 export const LOOKUP_INSTRUCTION =
   'Before writing any regulated figure (a limit, threshold, rate or amount), look it up with the ' +
-  '`rule_lookup` tool, passing the repo-relative path of the file you are writing. Never write such a ' +
-  'figure from memory.';
+  '`rule_lookup` tool, passing the repo-relative path of the file you are writing. If Premise does not ' +
+  'hold it, record it with `record_rule` (it stays a draft until compliance confirms it), citing your ' +
+  'source, or "unverified: from memory" if you have none, then use it and say which figures you recorded. ' +
+  'Never write a figure into code that Premise does not hold.';
 
 export const CONTRADICTION_INSTRUCTION =
   'If your change contradicts one of these rules, stop, ask the user, and call `supersede` instead of editing.';

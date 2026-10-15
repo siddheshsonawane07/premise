@@ -95,6 +95,17 @@ a Premise bug, not a quirk of the test. Two fixes:
 The prompts, rules and scoring are unchanged. The Tallyroll repository was reset to its empty
 commit, the team rebuilt and the capture discarded before the rerun.
 
+**Restart 2, 2026-10-16 00:55 IST: Premise contradicted itself.** In the rerun, sessions 1 and 2
+recorded the rates they needed as drafts and wrote their code:
+- Asha: 12% and 8.33%.
+- Ben: 40 hours and 1.5×.
+
+Session 3 refused to do the same for the ESI rates, quoting Premise's session-start instruction:
+"Never write such a figure from memory". That instruction was written before the restart-1 fix and
+contradicted it. Both texts now say the same thing. An agent records a figure Premise does not hold,
+citing its source or "unverified: from memory", uses it, and says which figures it recorded. It
+asks the user only if it does not know the figure. The reset was the same as for restart 1.
+
 ## Results
 
 Not yet run.
