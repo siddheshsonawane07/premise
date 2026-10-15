@@ -8,6 +8,7 @@ import { onRead, postEdit, preEdit, READ_TOOLS, EDIT_TOOLS, sessionStart, stopSw
 import { type Db, DbUnreachable } from './db/client.ts';
 import { buildMcpServer } from './mcp/tools.ts';
 import { PathOutsideRepo } from './paths.ts';
+import type { PropagationQueue } from './propagate/queue.ts';
 
 // One Express app: hook endpoints, the MCP endpoint, health. Every hook reply is 200 with a
 // JSON body, because Claude Code ignores status codes on HTTP hooks; a block must be a `deny`.
@@ -17,7 +18,7 @@ type Authed = Request & { who?: Principal };
 const UNREACHABLE =
   "Premise's memory (FalkorDB) is unreachable, so edits to files are blocked until it is back. Tell the user.";
 
-export function createApp(db: Db, config: Config) {
+export function createApp(db: Db, config: Config, queue: PropagationQueue) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '5mb' }));
@@ -88,7 +89,7 @@ export function createApp(db: Db, config: Config) {
   // ── MCP (stateless: a fresh server per request, the caller's key closed over) ──
 
   app.post('/mcp', auth, wrap(async (req, res) => {
-    const server = buildMcpServer(db, req.who!);
+    const server = buildMcpServer(db, req.who!, queue);
     const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => { void transport.close(); void server.close(); });
     await server.connect(transport);

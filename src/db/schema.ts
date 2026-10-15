@@ -31,6 +31,7 @@ export const TEAM_EXTRA_INDEXES: readonly Key[] = [
   ['Change', 'at'],
   ['Lookup', 'at'],
   ['Propagation', 'status'],
+  ['RuleVersion', 'rule_id'],
 ];
 
 export const CONTROL_KEYS: readonly Key[] = [

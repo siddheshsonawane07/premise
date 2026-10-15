@@ -41,6 +41,17 @@ export const CONTROL = {
   listTeams: `
     MATCH (t:Team)
     RETURN t.id AS id`,
+
+  /** The Reviewer's spend today, in micro-dollars. */
+  budgetSpent: `
+    MATCH (b:Budget {day: $day})
+    RETURN b.spent_microusd AS spent`,
+
+  budgetSpend: `
+    MERGE (b:Budget {day: $day})
+    ON CREATE SET b.spent_microusd = 0
+    SET b.spent_microusd = b.spent_microusd + $micro
+    RETURN b.spent_microusd AS spent`,
 } as const;
 
 /** One team's graph, `t_<teamId>`. */
@@ -163,11 +174,11 @@ export const TEAM = {
     MATCH (t)-[:BECAUSE]->(p:Propagation)-[:TO]->(nv:RuleVersion)
     OPTIONAL MATCH (c:Claim)-[:ON]->(t)
     WHERE c.expires_at > $now
-    OPTIONAL MATCH (c)-[:BY]->(cs:Session)-[:BY]->(cm:Member)
+    OPTIONAL MATCH (c)-[:BY]->(cm:Member)
     RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier,
            m.id AS assignee, m.name AS assigneeName, p.rule_id AS ruleId,
            nv.figure AS newFigure, nv.unit AS unit,
-           cs.id AS claimSession, cm.name AS claimBy, c.expires_at AS claimExpires`,
+           cm.id AS claimMember, cm.name AS claimBy, c.expires_at AS claimExpires`,
 
   /** Q2. Open (or reopen) a session and link it to its member. */
   openSession: `
@@ -267,6 +278,214 @@ export const TEAM = {
     ON CREATE SET fs.content = $content, fs.at = $at
     MERGE (f)-[:LATEST]->(fs)
     RETURN fs.hash AS hash`,
+
+  /**
+   * Q10. A rule changes, in one query (STRICT 5.6). The new version links to the current one
+   * by PARENT and SUPERSEDES {reason}, and a Propagation is queued from old to new. A final
+   * moves CURRENT and records who approved it; a draft leaves CURRENT where it is, so the
+   * propagation is a dry run.
+   */
+  supersede: `
+    MATCH (r:Rule {id: $ruleId})-[cur:CURRENT]->(old:RuleVersion)
+    MATCH (sibling:RuleVersion {rule_id: $ruleId})
+    WITH r, cur, old, max(sibling.n) AS top
+    CREATE (v:RuleVersion {id: $ruleId + '@' + toString(top + 1), rule_id: $ruleId, n: top + 1,
+                           text: $text, hash: $hash, at: $at, author: $author, citation: $citation,
+                           effective_from: $effectiveFrom, status: $status})
+    SET v += $figure
+    CREATE (v)-[:PARENT]->(old)
+    CREATE (v)-[:SUPERSEDES {reason: $reason}]->(old)
+    CREATE (p:Propagation {id: $propagationId, rule_id: $ruleId, at: $at, dry_run: $dryRun, status: 'queued'})
+    CREATE (p)-[:FROM]->(old)
+    CREATE (p)-[:TO]->(v)
+    WITH r, cur, old, v, p
+    MATCH (author:Member {id: $author})
+    FOREACH (x IN CASE WHEN $dryRun THEN [] ELSE [cur] END | DELETE x)
+    FOREACH (x IN CASE WHEN $dryRun THEN [] ELSE [1] END |
+      CREATE (r)-[:CURRENT]->(v)
+      CREATE (v)-[:APPROVED_BY {at: $at}]->(author))
+    RETURN v.id AS versionId, old.id AS fromId, p.id AS propagationId`,
+
+  /** A propagation and its two versions. */
+  propagation: `
+    MATCH (p:Propagation {id: $id})-[:FROM]->(old:RuleVersion)
+    MATCH (p)-[:TO]->(nv:RuleVersion)
+    MATCH (r:Rule {id: p.rule_id})-[:APPLIES_IN]->(j:Jurisdiction)
+    RETURN p.id AS id, p.status AS status, p.dry_run AS dryRun, p.at AS at, r.id AS ruleId, r.title AS title,
+           j.code AS jurisdiction, old.id AS fromId, old.figure AS oldFigure, nv.id AS toId, nv.figure AS newFigure,
+           nv.unit AS unit, nv.status AS newStatus, nv.effective_from AS effectiveFrom, nv.text AS newText,
+           old.text AS oldText, nv.citation AS citation,
+           p.files_total AS filesTotal, p.needs_review AS needsReview, p.cleared AS cleared,
+           p.asked AS asked, p.shown AS shown, p.in_scope AS inScope, p.unknown AS unknown`,
+
+  /** Propagations not yet done: re-queued at start-up. */
+  unfinishedPropagations: `
+    MATCH (p:Propagation)
+    WHERE p.status IN ['queued', 'running']
+    RETURN p.id AS id
+    ORDER BY p.at`,
+
+  setPropagationStatus: `
+    MATCH (p:Propagation {id: $id})
+    SET p.status = $status
+    RETURN p.id AS id`,
+
+  /**
+   * Q12. The core query. From the old version, back along RELIED_ON to every Change, and to its
+   * File. A file drops out if a later change relied on the new version at tier `asked` (it was
+   * fixed by someone who looked the new figure up), or if it already has a resolved task for the
+   * new version. For each file that stays: the strongest tier it was linked at, and the member
+   * behind its latest change, who receives the task.
+   */
+  affectedFiles: `
+    MATCH (:RuleVersion {id: $fromId})<-[rel:RELIED_ON]-(:Change)-[:TO]->(f:File)
+    WITH f, collect(rel.tier) AS tiers
+    OPTIONAL MATCH (f)<-[:TO]-(:Change)-[:RELIED_ON {tier: 'asked'}]->(fixed:RuleVersion {id: $toId})
+    WITH f, tiers, count(fixed) AS fixedByLookup
+    WHERE fixedByLookup = 0
+    OPTIONAL MATCH (t:ReviewTask {status: 'resolved'})-[:FOR]->(f), (t)-[:BECAUSE]->(:Propagation)-[:TO]->(:RuleVersion {id: $toId})
+    WITH f, tiers, count(t) AS resolved
+    WHERE resolved = 0
+    MATCH (f)<-[:TO]-(lc:Change)-[:IN]->(:Session)-[:BY]->(m:Member)
+    WITH f, tiers, lc, m
+    ORDER BY lc.at DESC
+    WITH f, tiers, collect(m.id)[0] AS ownerId, collect(m.name)[0] AS ownerName
+    RETURN f.path AS path, ownerId, ownerName,
+           CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown' ELSE 'in_scope' END AS tier
+    ORDER BY path`,
+
+  /** Q13. What a propagation found, dry run or final. */
+  writeFindings: `
+    MATCH (p:Propagation {id: $id})
+    UNWIND $files AS x
+    MATCH (f:File {path: x.path})
+    MERGE (p)-[e:FOUND]->(f)
+    SET e.tier = x.tier
+    RETURN count(e) AS found`,
+
+  /** The receipt's numbers, as plain number properties (a map cannot be a property). */
+  finishPropagation: `
+    MATCH (p:Propagation {id: $id})
+    SET p.status = 'done', p.files_total = $filesTotal, p.needs_review = $needsReview, p.cleared = $cleared,
+        p.asked = $asked, p.shown = $shown, p.in_scope = $inScope, p.unknown = $unknown
+    RETURN p.id AS id`,
+
+  /**
+   * Q14. One review task per file and new version, in one query: created only if no open task
+   * already exists for that file and version, so running a propagation twice opens no duplicates.
+   */
+  openTask: `
+    MATCH (p:Propagation {id: $propagationId})-[:TO]->(nv:RuleVersion)
+    MATCH (f:File {path: $path})
+    MATCH (m:Member {id: $assignee})
+    OPTIONAL MATCH (existing:ReviewTask)-[:FOR]->(f), (existing)-[:BECAUSE]->(:Propagation)-[:TO]->(nv)
+    WHERE existing.status IN ['open', 'proposed_clear']
+    WITH p, f, m, count(existing) AS already
+    WHERE already = 0
+    CREATE (t:ReviewTask {id: $taskId, status: $status, tier: $tier, due: $due})
+    CREATE (t)-[:FOR]->(f)
+    CREATE (t)-[:BECAUSE]->(p)
+    CREATE (t)-[:ASSIGNED]->(m)
+    RETURN t.id AS taskId`,
+
+  /** The file's latest snapshot, for the Reviewer. */
+  latestSnapshot: `
+    MATCH (:File {path: $path})-[:LATEST]->(s:FileSnapshot)
+    RETURN s.hash AS hash, s.content AS content`,
+
+  /** The latest diffs to a file that relied on a version. */
+  diffsUnder: `
+    MATCH (:RuleVersion {id: $versionId})<-[:RELIED_ON]-(c:Change)-[:TO]->(:File {path: $path})
+    RETURN c.diff AS diff, c.at AS at
+    ORDER BY at DESC
+    LIMIT 5`,
+
+  /** Every other current rule this file's changes relied on (the shared-file case). */
+  otherRulesForFile: `
+    MATCH (:File {path: $path})<-[:TO]-(:Change)-[:RELIED_ON]->(v:RuleVersion)
+    WHERE v.rule_id <> $ruleId
+    MATCH (r:Rule {id: v.rule_id})-[:CURRENT]->(cur:RuleVersion)
+    MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
+    RETURN DISTINCT r.id AS ruleId, r.title AS title, j.code AS jurisdiction, cur.text AS text,
+           cur.figure AS figure, cur.unit AS unit`,
+
+  /** Q15a. A cached verdict for this content and this rule version. */
+  verdictFor: `
+    MATCH (v:Verdict {id: $id})
+    RETURN v.verdict AS verdict, v.reason AS reason, v.patch AS patch, v.model AS model`,
+
+  /** Q15b. Store a verdict on the snapshot and version it judged. */
+  writeVerdict: `
+    MATCH (s:FileSnapshot {hash: $hash})
+    MATCH (rv:RuleVersion {id: $versionId})
+    MERGE (v:Verdict {id: $id})
+    ON CREATE SET v.verdict = $verdict, v.reason = $reason, v.model = $model, v.prompt_version = $promptVersion, v.at = $at
+    SET v += $patch
+    MERGE (v)-[:ON]->(s)
+    MERGE (v)-[:AGAINST]->(rv)
+    RETURN v.id AS id`,
+
+  /** Link a task to its verdict. */
+  attachVerdict: `
+    MATCH (t:ReviewTask {id: $taskId})
+    MATCH (v:Verdict {id: $verdictId})
+    MERGE (t)-[:HAS]->(v)
+    RETURN t.id AS id`,
+
+  /**
+   * Q16. Claim a task, in one query: succeeds only if the task is still open and nobody holds
+   * a live claim. FalkorDB runs one graph's writes one at a time, so two claims cannot both win.
+   */
+  claimTask: `
+    MATCH (t:ReviewTask {id: $taskId})
+    WHERE t.status IN ['open', 'proposed_clear']
+    MATCH (m:Member {id: $member})
+    OPTIONAL MATCH (live:Claim)-[:ON]->(t)
+    WHERE live.expires_at > $now
+    WITH t, m, count(live) AS held
+    WHERE held = 0
+    CREATE (c:Claim {id: $claimId, expires_at: $expires})
+    CREATE (c)-[:ON]->(t)
+    CREATE (c)-[:BY]->(m)
+    RETURN c.id AS claimId`,
+
+  /** Who holds a live claim on a task. */
+  claimHolder: `
+    MATCH (c:Claim)-[:ON]->(:ReviewTask {id: $taskId})
+    WHERE c.expires_at > $now
+    MATCH (c)-[:BY]->(m:Member)
+    RETURN m.name AS name, c.expires_at AS expires`,
+
+  /** Q17. Resolve a task, with a reason. */
+  resolveTask: `
+    MATCH (t:ReviewTask {id: $taskId})
+    WHERE t.status IN ['open', 'proposed_clear']
+    SET t.status = 'resolved', t.resolved_reason = $reason, t.resolved_at = $at, t.resolved_by = $member
+    RETURN t.id AS taskId`,
+
+  /** Q19a. The chain behind a file's latest changes: change, session, member, versions, rules. */
+  whyChanges: `
+    MATCH (:File {path: $path})<-[:TO]-(c:Change)-[:IN]->(s:Session)-[:BY]->(m:Member)
+    WITH c, s, m
+    ORDER BY c.at DESC
+    LIMIT 6
+    OPTIONAL MATCH (c)-[rel:RELIED_ON]->(v:RuleVersion)
+    OPTIONAL MATCH (r:Rule {id: v.rule_id})-[:APPLIES_IN]->(j:Jurisdiction)
+    OPTIONAL MATCH (newer:RuleVersion)-[:SUPERSEDES]->(v)
+    RETURN c.id AS changeId, c.at AS at, c.diff AS diff, s.id AS sessionId, s.tool AS tool,
+           m.id AS memberId, m.name AS member, rel.tier AS tier,
+           v.id AS versionId, v.n AS n, v.figure AS figure, v.unit AS unit, v.status AS status, v.citation AS citation,
+           r.id AS ruleId, r.title AS title, j.code AS jurisdiction,
+           collect(DISTINCT newer.id) AS supersededBy
+    ORDER BY at DESC`,
+
+  /** Q19b. Tasks and verdicts on a file. */
+  whyTasks: `
+    MATCH (:File {path: $path})<-[:FOR]-(t:ReviewTask)-[:BECAUSE]->(p:Propagation)-[:TO]->(nv:RuleVersion)
+    MATCH (t)-[:ASSIGNED]->(m:Member)
+    OPTIONAL MATCH (t)-[:HAS]->(vd:Verdict)
+    RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, m.name AS assignee,
+           nv.id AS versionId, p.id AS propagationId, vd.id AS verdictId, vd.verdict AS verdict, vd.reason AS verdictReason`,
 
   /** Q9a. Of these paths, which already have a change from this session. */
   changedInSession: `

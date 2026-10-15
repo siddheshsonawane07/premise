@@ -108,8 +108,9 @@ export async function preEdit(db: Db, who: Principal, ev: ToolEvent, tool = 'cla
     await markShown(db, who, ev.session_id, path, unseen.map((r) => r.versionId), tool);
     return { decision: 'deny', reason: forDeny(path, unseen) };
   }
+  // A claim is by a member: an MCP call carries the member's key but not Claude Code's session.
   const others = tasks.filter((t) =>
-    (t.claimBy && t.claimSession !== ev.session_id) || t.assignee !== who.memberId);
+    (t.claimMember && t.claimMember !== who.memberId) || t.assignee !== who.memberId);
   if (others.length) {
     return { decision: 'ask', reason: forRead(path, [], others) ?? `Open review task on ${path}` };
   }

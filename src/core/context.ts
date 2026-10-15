@@ -36,7 +36,7 @@ export interface TaskLine {
   assignee?: string;
   assigneeName: string;
   ruleId: string;
-  claimSession?: string;
+  claimMember?: string;
   path?: string;
   newFigure?: number;
   unit?: string;

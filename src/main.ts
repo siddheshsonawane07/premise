@@ -2,6 +2,8 @@ import { loadConfig } from './config.ts';
 import { Db, run } from './db/client.ts';
 import { CONTROL } from './db/queries.ts';
 import { ensureControlSchema, ensureTeamSchema } from './db/schema.ts';
+import { PropagationQueue } from './propagate/queue.ts';
+import { makeReviewer } from './review/reviewer.ts';
 import { createApp } from './server.ts';
 
 // Start-up: connect, create or verify every index and constraint on every graph, and refuse
@@ -15,7 +17,11 @@ async function main() {
   for (const t of teams) await ensureTeamSchema(db.team(t.id));
   console.log(`premise: FalkorDB ok, ${teams.length} team graph(s) verified`);
 
-  const app = createApp(db, config);
+  const queue = new PropagationQueue(db, makeReviewer(config.ANTHROPIC_API_KEY, config.REVIEW_DAILY_CAP_USD));
+  await queue.resume(teams.map((t) => t.id));
+  if (!config.ANTHROPIC_API_KEY) console.log('premise: no ANTHROPIC_API_KEY, so every Reviewer verdict is "unknown"');
+
+  const app = createApp(db, config, queue);
   const server = app.listen(config.PORT, () => console.log(`premise: listening on ${config.PORT}`));
   const stop = () => server.close(() => void db.close().finally(() => process.exit(0)));
   process.on('SIGTERM', stop);
