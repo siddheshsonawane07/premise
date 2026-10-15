@@ -192,7 +192,8 @@ export function figureSpellings(figure?: number, unit?: string): string[] {
     out.add(s);
     for (const sep of ['_', ',']) { out.add(group(s, sep, false)); out.add(group(s, sep, true)); }
   }
-  if (minor && String(figure / 100).length >= 4) {
+  // 684_00 is distinctive even though a bare 684 is not.
+  if (minor && String(figure).length >= 5) {
     out.add(`${group(String(figure / 100), '_', false)}_00`);
     out.add(`${group(String(figure / 100), '_', true)}_00`);
   }

@@ -222,6 +222,8 @@ describe('files no recorded edit relied on', () => {
     expect(mentionsFigure('if (x > 40_000_00)', figureSpellings(40_000_00, 'paise'))).toBe(true);
     expect(mentionsFigure('const y = 150_000_00;', s)).toBe(false);
     expect(figureSpellings(80, 'percent')).toEqual([]);
+    expect(figureSpellings(684_00, 'cents')).toEqual(expect.arrayContaining(['68400', '684_00']));
+    expect(figureSpellings(684_00, 'cents')).not.toContain('684');
   });
 });
 
