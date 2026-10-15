@@ -1,0 +1,8 @@
+{
+  "name": "tallyroll",
+  "private": true,
+  "type": "module",
+  "description": "Tallyroll: an invented payroll service for India and the US. Synthetic demo for Premise.",
+  "scripts": { "test": "vitest run" },
+  "devDependencies": { "typescript": "7.0.2", "vitest": "5.0.4" }
+}

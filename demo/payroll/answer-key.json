@@ -1,0 +1,39 @@
+{
+  "note": "Written by hand on 2026-10-16 01:10 IST by reading all twelve Tallyroll files after the fifth session, before any Premise query was run for measurement (PROTOCOL.md). A file is listed if it must be edited for the codebase to be right under the new figure. src/in/payslip.ts, src/hr/onboarding.ts and src/reports/compliance.ts import the constants and need no edit for either change.",
+  "changes": [
+    {
+      "rule": "in-epf-ceiling",
+      "change": "₹15,000 → ₹25,000 a month (Union Cabinet, 2026-09-16; notification pending)",
+      "needsChange": [
+        "src/in/epf.ts",
+        "test/compliance.test.ts",
+        "test/epf.test.ts",
+        "test/onboarding.test.ts",
+        "test/payslip.test.ts"
+      ],
+      "why": {
+        "src/in/epf.ts": "EPF_WAGE_CEILING_PAISE = 1_500_000",
+        "test/compliance.test.ts": "PF boundary at rupees(15_000) + 1 expects 'not mandatory'",
+        "test/epf.test.ts": "'caps wages above the ceiling' expects ₹50,000 to equal ₹15,000; the test named 'on the ceiling exactly at ₹15,000'",
+        "test/onboarding.test.ts": "note '₹15,000 a month or less'; paisa over ₹15,000 expects 'optional'",
+        "test/payslip.test.ts": "note 'up to ₹15,000 a month'; basic ₹40,000 expects PF ₹1,800 and EPS ₹1,250"
+      }
+    },
+    {
+      "rule": "us-flsa-salary",
+      "change": "$684 → $844 a week (the level of the vacated 2024 rule)",
+      "needsChange": [
+        "src/us/flsa.ts",
+        "test/compliance.test.ts",
+        "test/flsa.test.ts",
+        "test/onboarding.test.ts"
+      ],
+      "why": {
+        "src/us/flsa.ts": "FLSA_SALARY_LEVEL_CENTS = 68_400",
+        "test/compliance.test.ts": "boundary at dollars(35_568), which is $684 × 52",
+        "test/flsa.test.ts": "boundary at dollars(684)",
+        "test/onboarding.test.ts": "boundary at dollars(35_568) and the note '$684.00 a week ($35,568.00 a year)'"
+      }
+    }
+  ]
+}
