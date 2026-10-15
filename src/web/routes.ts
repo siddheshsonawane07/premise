@@ -4,6 +4,7 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import type { Principal } from '../auth.ts';
 import { getPropagation, NotAllowed, type PropagationView, receipt, resolveTask, supersede } from '../core/change.ts';
 import { formatFigure } from '../core/rules.ts';
+import { auditCsv, auditPack } from '../core/audit.ts';
 import { impact, overlayPaths, shortestToRegulators } from '../core/impact.ts';
 import { why } from '../core/why.ts';
 import { type Db, one, run } from '../db/client.ts';
@@ -88,7 +89,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
           <header><span class="j">${x.jurisdiction}</span> <h2>${x.title}</h2> ${badge(x.status === 'final' ? 'ok' : 'warn', `v${x.n} ${x.status}`)}</header>
           <p class="figure">${fig(x.figure, x.unit) || 'no single figure'}</p>
           <p>${x.text}</p>
-          <p class="muted">Citation: ${x.citation}. Effective ${x.effectiveFrom}. Rule id <code>${x.ruleId}</code>.</p>
+          <p class="muted">Citation: ${x.citation}. Effective ${x.effectiveFrom}. Rule id <code>${x.ruleId}</code>. <a href="/audit/${x.ruleId}">Audit evidence</a></p>
           <p>Scope: ${declared.map((s) => html`<code>${s.path}</code> `)}</p>
           ${proposed.length ? html`<p>Proposed by agents' lookups: ${proposed.map((s) => html`
             <form method="post" action="/rules/${x.ruleId}/accept-scope" class="inline"><input type="hidden" name="path" value="${s.path}">
@@ -199,6 +200,45 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
       ${im.clusters.map((c) => html`<p>${c.rules.length > 1 ? 'Coupled:' : 'On its own:'} ${c.rules.map((id) => html`<code>${id}</code> `)} <span class="small">(${c.files} files)</span></p>`)}
       ${im.coupling.length ? html`<p class="muted">Files that tie them together, each written under more than one rule:</p>
         <ul>${im.coupling.map((f) => html`<li><a href="/why?path=${encodeURIComponent(f.path)}"><code>${f.path}</code></a>: ${f.rules.join(', ')}</li>`)}</ul>` : ''}
+    ` }));
+  }));
+
+  // ── Audit evidence for one rule ────────────────────────────────────────────
+  r.get('/audit/:id/evidence.json', wrap(async (req, res, who) => {
+    const pack = await auditPack(db, who, String(req.params.id));
+    if (!pack) return res.status(404).json({ error: 'no such rule' });
+    res.attachment(`premise-audit-${pack.ruleId}.json`).json(pack);
+  }));
+  r.get('/audit/:id/evidence.csv', wrap(async (req, res, who) => {
+    const pack = await auditPack(db, who, String(req.params.id));
+    if (!pack) return res.status(404).send('no such rule');
+    res.attachment(`premise-audit-${pack.ruleId}.csv`).type('text/csv').send(auditCsv(pack));
+  }));
+  r.get('/audit/:id', wrap(async (req, res, who) => {
+    const pack = await auditPack(db, who, String(req.params.id));
+    if (!pack) return res.status(404).send(page({ title: 'Not found', who: who.name, active: '', body: html`<p>No such rule.</p>` }));
+    const first = pack.versions[0]!;
+    const when = (ms?: number) => (ms ? new Date(ms).toISOString().slice(0, 16).replace('T', ' ') : '');
+    res.send(page({ title: 'Audit', who: who.name, active: '/rules', body: html`
+      <h1>Audit evidence: ${first.title} ${badge('', first.jurisdiction)}</h1>
+      <p class="lede">${pack.note}</p>
+      <p><a href="/audit/${pack.ruleId}/evidence.json">Download JSON</a> · <a href="/audit/${pack.ruleId}/evidence.csv">Download CSV</a></p>
+      ${pack.versions.map((v) => html`<article class="rule">
+        <header><h2>Version ${v.n}</h2> ${badge(v.status === 'final' ? 'ok' : 'warn', v.status)} <span class="figure-sm">${fig(v.figure, v.unit)}</span></header>
+        <p>${v.text}</p>
+        <p class="muted">Citation: ${v.citation}. Effective ${v.effectiveFrom}. Recorded ${when(v.at)} by ${v.author.split('.').pop()}${v.approvedBy ? html`, approved by ${v.approvedBy}` : ''}.
+          ${v.supersedes ? html`Supersedes <code>${v.supersedes}</code>: ${v.reason ?? ''}.` : ''}</p>
+        ${v.changes.length ? html`<table><thead><tr><th>When (UTC)</th><th>File</th><th>Tier</th><th>Who</th><th>Session · tool · model</th></tr></thead><tbody>
+          ${v.changes.map((c) => html`<tr><td>${when(c.at)}</td><td><a href="/why?path=${encodeURIComponent(c.path)}"><code>${c.path}</code></a></td>
+            <td>${tierBadge(c.tier)}</td><td>${c.member}</td><td class="small">${c.session.slice(0, 8)} · ${c.tool ?? ''} · ${c.model ?? 'unknown'}</td></tr>`)}
+        </tbody></table>` : html`<p class="muted">No code was written under this version.</p>`}
+      </article>`)}
+      <h2>Rule changes and their review</h2>
+      ${pack.propagations.length ? pack.propagations.map((p) => html`<h3>${p.dryRun ? 'Dry run' : 'Final'} ${p.fromId} → ${p.toId}, ${when(p.at)}: ${p.filesTotal ?? 0} files</h3>
+        ${p.tasks.length ? html`<table><tbody>${p.tasks.map((t) => html`<tr><td><code>${t.path}</code></td><td>${t.assignee}</td><td>${t.status.replace('_', ' ')}</td>
+          <td>${verdictBadge(t.verdict)}<div class="small">${t.model ? `${t.model}, prompt ${t.promptVersion}` : ''}</div></td><td class="small">${t.resolvedReason ?? ''}</td></tr>`)}</tbody></table>`
+          : html`<p class="muted">${p.dryRun ? 'Dry run: no tasks opened.' : 'No tasks.'}</p>`}`)
+        : html`<p class="muted">This rule has not changed.</p>`}
     ` }));
   }));
 

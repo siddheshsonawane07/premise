@@ -5,6 +5,7 @@ import {
 } from '../src/core/change.ts';
 import { lookupRule } from '../src/core/rules.ts';
 import { why } from '../src/core/why.ts';
+import { auditCsv, auditPack } from '../src/core/audit.ts';
 import { type Db, run } from '../src/db/client.ts';
 import { dropTeam, testDb } from './helpers/db.ts';
 import { editEv, makeWorld, readEv, ROOT, type World, writeEv } from './helpers/world.ts';
@@ -168,5 +169,30 @@ describe('why', () => {
     expect(res.edges.some((e) => e.type === 'RELIED_ON' && e.label === 'asked')).toBe(true);
     expect(res.edges.some((e) => e.type === 'SUPERSEDES')).toBe(true);
     expect(res.text).toContain('superseded by');
+  });
+});
+
+describe('audit evidence', () => {
+  it('every version, who approved the final and why, and the changes made under each version', async () => {
+    const pack = (await auditPack(db, w.chitra, 'in-cash-load'))!;
+    expect(pack.versions.map((v) => [v.versionId, v.status])).toEqual([
+      ['in-cash-load@1', 'final'], ['in-cash-load@2', 'draft'], ['in-cash-load@3', 'final'],
+    ]);
+    expect(pack.versions[2]).toMatchObject({ approvedBy: 'Chitra', supersedes: 'in-cash-load@1' });
+    const v1 = pack.versions[0]!;
+    expect(v1.changes.find((c) => c.path === 'src/admin/monthly-compliance.ts')).toMatchObject({ tier: 'asked', member: 'Ben' });
+    expect(pack.propagations.filter((p) => !p.dryRun)[0]!.tasks.length).toBeGreaterThan(0);
+  });
+
+  it('the CSV has a row per change and cannot smuggle a spreadsheet formula', async () => {
+    const pack = (await auditPack(db, w.chitra, 'in-cash-load'))!;
+    pack.versions[0]!.changes[0]!.member = '=HYPERLINK("x")';
+    const csv = auditCsv(pack);
+    expect(csv.split('\n')[0]).toContain('"model"');
+    expect(csv).toContain('"' + "'" + '=HYPERLINK(""x"")"');
+  });
+
+  it('an unknown rule has no evidence pack', async () => {
+    expect(await auditPack(db, w.chitra, 'no-such-rule')).toBeUndefined();
   });
 });

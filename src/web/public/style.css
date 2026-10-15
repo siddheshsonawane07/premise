@@ -61,3 +61,5 @@ pre.why { white-space: pre-wrap; background: var(--card); border: 1px solid var(
 .bar { background: var(--line); border-radius: 4px; height: 8px; width: 9rem; } .bar span { display: block; height: 8px; border-radius: 4px; background: var(--accent); }
 footer { max-width: 68rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--line); }
 @media (max-width: 640px) { th:nth-child(3), td:nth-child(3) { display: none; } .who { margin-left: 0; } }
+.figure-sm { font-weight: 700; margin-left: 0.4rem; }
+h3 { font-size: 1rem; margin: 1.2rem 0 0.4rem; }

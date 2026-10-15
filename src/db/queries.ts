@@ -701,6 +701,44 @@ export const TEAM = {
     RETURN f.path AS path, rules
     ORDER BY size(rules) DESC, path`,
 
+  /**
+   * Q20a. Audit evidence for one rule: every version, with its citation, author, approver and the
+   * reason it superseded the one before, and every change made under it: file, member, session,
+   * tool, model and tier. What an auditor asks of AI-written code: what policy governed it,
+   * who and what wrote it, and how strongly it was tied to the policy at the moment of the edit.
+   */
+  auditVersions: `
+    MATCH (r:Rule {id: $ruleId})<-[:OF]-(v:RuleVersion)
+    MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
+    OPTIONAL MATCH (v)-[ap:APPROVED_BY]->(am:Member)
+    OPTIONAL MATCH (v)-[sup:SUPERSEDES]->(old:RuleVersion)
+    OPTIONAL MATCH (v)<-[rel:RELIED_ON]-(c:Change)-[:TO]->(f:File)
+    OPTIONAL MATCH (c)-[:IN]->(s:Session)-[:BY]->(m:Member)
+    WITH r, j, v, am, ap, sup, old,
+         collect(CASE WHEN c IS NULL THEN NULL ELSE {change: c.id, at: c.at, path: f.path, tier: rel.tier, member: m.name,
+                 session: s.id, tool: s.tool, model: s.model} END) AS changes
+    RETURN r.id AS ruleId, r.title AS title, j.code AS jurisdiction, j.regulator AS regulator,
+           v.id AS versionId, v.n AS n, v.status AS status, v.figure AS figure, v.unit AS unit, v.text AS text,
+           v.citation AS citation, v.effective_from AS effectiveFrom, v.at AS at, v.author AS author,
+           am.name AS approvedBy, ap.at AS approvedAt, sup.reason AS reason, old.id AS supersedes, changes
+    ORDER BY n`,
+
+  /** Q20b. Every propagation of a rule, with its review tasks, verdicts and resolutions. */
+  auditPropagations: `
+    MATCH (p:Propagation {rule_id: $ruleId})-[:TO]->(nv:RuleVersion)
+    MATCH (p)-[:FROM]->(ov:RuleVersion)
+    OPTIONAL MATCH (t:ReviewTask)-[:BECAUSE]->(p)
+    OPTIONAL MATCH (t)-[:FOR]->(f:File)
+    OPTIONAL MATCH (t)-[:ASSIGNED]->(m:Member)
+    OPTIONAL MATCH (t)-[:HAS]->(vd:Verdict)
+    WITH p, nv, ov, collect(CASE WHEN t IS NULL THEN NULL ELSE {task: t.id, path: f.path, status: t.status, due: t.due,
+                 tier: t.tier, assignee: m.name, verdict: vd.verdict, verdictReason: vd.reason, model: vd.model,
+                 promptVersion: vd.prompt_version, resolvedReason: t.resolved_reason, resolvedBy: t.resolved_by,
+                 resolvedAt: t.resolved_at} END) AS tasks
+    RETURN p.id AS propagationId, p.at AS at, p.dry_run AS dryRun, ov.id AS fromId, nv.id AS toId,
+           p.files_total AS filesTotal, tasks
+    ORDER BY at`,
+
   /** Q9a. When Premise last recorded a change to each of these paths. */
   lastChangeAt: `
     MATCH (f:File)<-[:TO]-(c:Change)
