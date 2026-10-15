@@ -1,0 +1,17 @@
+# FalkorDB is pinned to one exact tag (STRICT 5.1): the C engine, v4.22.0.
+# The same tag runs locally, in tests and in the deployment (STRICT 5.3).
+services:
+  falkordb:
+    image: falkordb/falkordb:v4.22.0
+    ports:
+      - "6379:6379"
+    environment:
+      # Query timeouts are off by default; a timed-out write is rolled back (STRICT 5.10).
+      FALKORDB_ARGS: "TIMEOUT_DEFAULT 2000 TIMEOUT_MAX 10000"
+      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:-premise-local} --appendonly yes"
+      BROWSER: "0"
+    volumes:
+      - falkordb-data:/var/lib/falkordb/data
+
+volumes:
+  falkordb-data:

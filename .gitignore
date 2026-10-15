@@ -1,0 +1,13 @@
+# secrets — must stay first (STRICT 9.2)
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# local capture before scrubbing
+demo/events/raw/
