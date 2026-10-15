@@ -108,4 +108,47 @@ asks the user only if it does not know the figure. The reset was the same as for
 
 ## Results
 
-Not yet run.
+**Measured on 2026-10-16 at 01:15 IST, after the answer key was committed (`2baadca`).** Run with
+`npx tsx scripts/measure.ts --payroll [--rule us-flsa-salary]`. Premise is scored before the
+Reviewer, which has not been run. The five sessions ran on the third attempt with no further
+restart. The agents recorded eight figures Premise did not hold as drafts, each marked as coming
+from memory:
+- the EPF and EPS rates;
+- EPF rounding;
+- both ESI rates;
+- ESI rounding;
+- the 40-hour overtime threshold and the 1.5× rate.
+
+**EPF wage ceiling, ₹15,000 → ₹25,000** (5 files need changing):
+
+| Method | Right | Missed | Flagged but fine |
+|---|---|---|---|
+| `grep` for the old figure | **5 of 5** | — | `test/esi.test.ts` |
+| The rule's declared folders | 1 of 5 | 4 tests | `src/in/esi.ts`, `src/in/payslip.ts` |
+| Premise | **5 of 5** | — | `src/hr/onboarding.ts`, `src/in/esi.ts`, `src/in/payslip.ts`, `src/reports/compliance.ts`, `test/esi.test.ts` |
+
+**FLSA salary level, $684 → $844 a week** (4 files need changing):
+
+| Method | Right | Missed | Flagged but fine |
+|---|---|---|---|
+| `grep` for the old figure | 1 of 4 | `test/flsa.test.ts`, `test/onboarding.test.ts`, `test/compliance.test.ts` | — |
+| The rule's declared folders | 1 of 4 | the same three tests | — |
+| Premise | **4 of 4** | — | `src/hr/onboarding.ts`, `src/reports/compliance.ts` |
+
+**What this says, both ways:**
+- **The agents wrote well-factored code**, with one constant per figure and every other module
+  importing it. For the EPF ceiling, whose figure is a distinctive five-digit number spelled the
+  same way everywhere, `grep` was as complete as Premise and far more precise: 1 false alarm
+  against 5.
+- **`grep` failed where the figure was derived or too short to search for.** The tests write the
+  US level as `dollars(684)` and as `dollars(35_568)` ($684 × 52 weeks). The figure's spellings
+  (`68400`, `68_400`, `684_00`) match none of them as a whole number. A plain text search would hit
+  `68_400.5` in `test/flsa.test.ts`, which is an invalid-input test. A person searching for `684`
+  would have caught two of the three tests, but never `test/compliance.test.ts`. Premise found all
+  four because the agents looked the rule up while writing them: five of its six flagged files at
+  the `asked` tier, one at `session`.
+- **Premise's false alarms are of one kind:** a file that imports the constant and so needs no
+  edit, yet was written by an agent that looked the rule up. Reviewing them is cheap, but they are
+  noise. Clearing them is the Reviewer's job, and it has not been run.
+- **The rule's declared folders found 1 file each time.** Most code that depends on a rule lives
+  outside the folder the rule was declared for.

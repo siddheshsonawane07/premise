@@ -88,8 +88,9 @@ drawn, with the shortest route to each regulator), **Impact** (the graph algorit
 **Tasks** (resolve or hand off). The raw graph is in FalkorDB Browser at <http://localhost:3000>.
 
 ```bash
-npm test                                    # 71 tests, against the real FalkorDB
+npm test                                    # 79 tests, against the real FalkorDB
 npx tsx scripts/measure.ts                  # grep vs the rule's folders vs Premise, against an answer key
+npx tsx scripts/measure.ts --payroll --rule us-flsa-salary  # the second test (setup-demo.ts --payroll --replay first)
 npx tsx scripts/ablate.ts                   # what breaks without the graph (start the server first)
 npx tsx scripts/import-rules.ts ../some-repo # a repo's .claude/rules/*.md as versioned rules
 ```
@@ -499,6 +500,37 @@ reset on a schedule, with the rule changes runnable from the browser.
   check above was added because of it.
 - **The Reviewer has not yet been run against the model**, so whether it clears the three files
   that never use the figure is not yet measured.
+
+**A second test, fixed before it ran** ([`demo/payroll/PROTOCOL.md`](demo/payroll/PROTOCOL.md)).
+The Tilldesk numbers come from an app, prompts and answer key made while Premise was being built,
+and Premise changed after seeing them. So a second app was built under a protocol committed first:
+- the app is *Tallyroll*, an invented payroll service, under three real rules;
+- five fresh Claude Code sessions ran from prompts fixed in advance;
+- the answer key was committed before anything was measured.
+
+The changes measured are real ones:
+- **India's EPF wage ceiling** rising from ₹15,000 to ₹25,000 (Union Cabinet, 16 September 2026);
+- **the US overtime salary level** moving from $684 to $844 a week (the vacated 2024 rule).
+
+| Change | `grep` | The rule's folders | Premise, before the Reviewer |
+|---|---|---|---|
+| EPF ₹15,000 → ₹25,000 (5 files) | **5 of 5**, 1 false alarm | 1 of 5 | **5 of 5**, 5 false alarms |
+| FLSA $684 → $844 (4 files) | 1 of 4 | 1 of 4 | **4 of 4**, 2 false alarms |
+
+- **On the EPF change, `grep` was as complete as Premise and more precise.** The agents wrote one
+  constant per figure and imported it everywhere else. Premise's extra flags are the files that
+  import it, which need no edit.
+- **On the US change, `grep` missed three tests**, which write the figure as `dollars(684)` and as
+  `35_568` ($684 × 52). Premise found them because the agents looked the rule up while writing them.
+
+The run also found two real bugs, and each one restarted it from scratch:
+1. **Premise told an agent "do not guess" for a figure it didn't hold, so the agent stopped.** Now
+   the agent records the figure as a draft for compliance to confirm, and the file is linked to it.
+2. **Premise's session-start instruction contradicted that fix.**
+
+Across the five sessions, the agents recorded **eight figures Premise did not hold** (contribution
+rates, rounding rules, the 40-hour week), each marked as coming from memory. Without Premise,
+those eight would have been written into the code with no record.
 
 **Load and latency**, on one machine (Apple silicon, FalkorDB in a 2-CPU Docker VM, server and
 client on the same host), `npx tsx scripts/load.ts`, 2026-10-15:

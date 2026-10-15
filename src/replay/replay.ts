@@ -5,6 +5,7 @@ import { agentRecordRule, lookupRule, type NewRule } from '../core/rules.ts';
 import { type Db, one } from '../db/client.ts';
 import { CONTROL } from '../db/queries.ts';
 import { normalisePath } from '../mcp/tools.ts';
+import { PathOutsideRepo } from '../paths.ts';
 import type { CapturedEvent } from './scrub.ts';
 
 // The demo seed: captured hook events of real agent sessions, fed in order through the same
@@ -34,43 +35,49 @@ export async function replay(db: Db, teamId: string, events: CapturedEvent[]): P
   for (const e of events) {
     const p = await principal(e.member);
     const b = e.body;
-    switch (e.route) {
-      case '/hooks/session-start':
-        await sessionStart(db, p, b as { session_id: string; tool?: string; branch?: string });
-        break;
-      case '/hooks/read':
-        await onRead(db, p, b as unknown as ToolEvent);
-        break;
-      case '/hooks/pre-edit':
-        await preEdit(db, p, b as unknown as ToolEvent);
-        break;
-      case '/hooks/post-edit':
-        await postEdit(db, p, b as unknown as ToolEvent);
-        break;
-      case '/hooks/stop': {
-        const shift = Date.now() - e.at;
-        const files = ((b.files ?? []) as { path: string; mtimeMs: number }[]).map((f) => ({ ...f, mtimeMs: f.mtimeMs + shift }));
-        await stopSweep(db, p, { session_id: String(b.session_id), cwd: String(b.cwd), files });
-        break;
-      }
-      case '/mcp': {
-        const params = b.params as { name?: string; arguments?: Record<string, string> } | undefined;
-        if (params?.name === 'rule_lookup' && params.arguments) {
-          const a = params.arguments;
-          await lookupRule(db, p, { rule: a.rule ?? '', path: normalisePath(a.path ?? ''), jurisdiction: a.jurisdiction });
-        } else if (params?.name === 'record_rule' && params.arguments) {
-          // A rule recorded during the captured sessions is applied where it happened in time.
-          const a = params.arguments as unknown as Omit<NewRule, 'owner'> & { path?: string };
-          await agentRecordRule(db, p, { ...a, scope: a.scope.map(normalisePath), path: a.path ? normalisePath(a.path) : undefined });
-        } else {
+    try {
+      switch (e.route) {
+        case '/hooks/session-start':
+          await sessionStart(db, p, b as { session_id: string; tool?: string; branch?: string });
+          break;
+        case '/hooks/read':
+          await onRead(db, p, b as unknown as ToolEvent);
+          break;
+        case '/hooks/pre-edit':
+          await preEdit(db, p, b as unknown as ToolEvent);
+          break;
+        case '/hooks/post-edit':
+          await postEdit(db, p, b as unknown as ToolEvent);
+          break;
+        case '/hooks/stop': {
+          const shift = Date.now() - e.at;
+          const files = ((b.files ?? []) as { path: string; mtimeMs: number }[]).map((f) => ({ ...f, mtimeMs: f.mtimeMs + shift }));
+          await stopSweep(db, p, { session_id: String(b.session_id), cwd: String(b.cwd), files });
+          break;
+        }
+        case '/mcp': {
+          const params = b.params as { name?: string; arguments?: Record<string, string> } | undefined;
+          if (params?.name === 'rule_lookup' && params.arguments) {
+            const a = params.arguments;
+            await lookupRule(db, p, { rule: a.rule ?? '', path: normalisePath(a.path ?? ''), jurisdiction: a.jurisdiction });
+          } else if (params?.name === 'record_rule' && params.arguments) {
+            // A rule recorded during the captured sessions is applied where it happened in time.
+            const a = params.arguments as unknown as Omit<NewRule, 'owner'> & { path?: string };
+            await agentRecordRule(db, p, { ...a, scope: a.scope.map(normalisePath), path: a.path ? normalisePath(a.path) : undefined });
+          } else {
+            skipped++;
+            continue;
+          }
+          break;
+        }
+        default:
           skipped++;
           continue;
-        }
-        break;
       }
-      default:
-        skipped++;
-        continue;
+    } catch (err) {
+      // As the server does: a file outside the repository (an agent's scratch file) is ignored.
+      if (err instanceof PathOutsideRepo) { skipped++; continue; }
+      throw err;
     }
     applied++;
   }
