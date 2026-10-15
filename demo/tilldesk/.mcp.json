@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "premise": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PREMISE_KEY}"
+      }
+    }
+  }
+}

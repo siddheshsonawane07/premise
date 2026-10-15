@@ -1,0 +1,90 @@
+{
+  "env": {
+    "PREMISE_URL": "http://localhost:8080",
+    "PREMISE_REPO": "tilldesk"
+  },
+  "enabledMcpjsonServers": [
+    "premise"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/premise-hook.mjs\" session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://localhost:8080/hooks/read",
+            "timeout": 5,
+            "headers": {
+              "Authorization": "Bearer ${PREMISE_KEY}",
+              "X-Premise-Repo": "tilldesk"
+            },
+            "allowedEnvVars": [
+              "PREMISE_KEY"
+            ]
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://localhost:8080/hooks/post-edit",
+            "timeout": 5,
+            "headers": {
+              "Authorization": "Bearer ${PREMISE_KEY}",
+              "X-Premise-Repo": "tilldesk"
+            },
+            "allowedEnvVars": [
+              "PREMISE_KEY"
+            ]
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://localhost:8080/hooks/pre-edit",
+            "timeout": 5,
+            "headers": {
+              "Authorization": "Bearer ${PREMISE_KEY}",
+              "X-Premise-Repo": "tilldesk"
+            },
+            "allowedEnvVars": [
+              "PREMISE_KEY"
+            ],
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/premise-hook.mjs\" stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

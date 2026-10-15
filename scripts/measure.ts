@@ -2,7 +2,7 @@
 // limit changed, against a hand-made answer key. Every method's misses are reported, Premise's
 // included.
 //
-//   npx tsx scripts/measure.ts <tilldesk-dir>
+//   npx tsx scripts/measure.ts [tilldesk-dir]   (default: demo/tilldesk, the snapshot of the real sessions)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,8 +10,7 @@ import { loadConfig } from '../src/config.ts';
 import { Db, run } from '../src/db/client.ts';
 import { TEAM } from '../src/db/queries.ts';
 
-const dir = process.argv[2];
-if (!dir) { console.error('usage: measure.ts <tilldesk-dir>'); process.exit(1); }
+const dir = process.argv[2] ?? 'demo/tilldesk';
 const key = JSON.parse(fs.readFileSync('demo/answer-key.json', 'utf8')) as { rule: string; needsChange: string[] };
 const truth = new Set(key.needsChange);
 

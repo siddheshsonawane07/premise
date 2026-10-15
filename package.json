@@ -11,12 +11,13 @@
     "premise-hook": "./cli/premise-hook.mjs"
   },
   "scripts": {
-    "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:up": "docker compose up -d falkordb",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "docs:queries": "tsx scripts/docs-queries.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.134.0",
