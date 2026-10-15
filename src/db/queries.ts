@@ -42,6 +42,11 @@ export const CONTROL = {
     MATCH (t:Team)
     RETURN t.id AS id`,
 
+  /** The web view acts as one member, chosen by id on the server (never by the browser). */
+  principalById: `
+    MATCH (m:Member {id: $id})-[:IN]->(t:Team)
+    RETURN m.id AS memberId, m.name AS name, m.role AS role, t.id AS teamId`,
+
   /** The Reviewer's spend today, in micro-dollars. */
   budgetSpent: `
     MATCH (b:Budget {day: $day})
@@ -354,14 +359,72 @@ export const TEAM = {
            CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown' ELSE 'in_scope' END AS tier
     ORDER BY path`,
 
-  /** Q13. What a propagation found, dry run or final. */
+  /** Q13. What a propagation found, dry run or final, with who would own each file. */
   writeFindings: `
     MATCH (p:Propagation {id: $id})
     UNWIND $files AS x
     MATCH (f:File {path: x.path})
     MERGE (p)-[e:FOUND]->(f)
-    SET e.tier = x.tier
+    SET e.tier = x.tier, e.owner = x.owner
     RETURN count(e) AS found`,
+
+  /** A propagation's findings with each file's task (final) or latest verdict (dry run). */
+  findings: `
+    MATCH (p:Propagation {id: $id})-[e:FOUND]->(f:File)
+    MATCH (p)-[:TO]->(nv:RuleVersion)
+    OPTIONAL MATCH (t:ReviewTask)-[:BECAUSE]->(p), (t)-[:FOR]->(f)
+    OPTIONAL MATCH (t)-[:HAS]->(tv:Verdict)
+    OPTIONAL MATCH (f)-[:LATEST]->(:FileSnapshot)<-[:ON]-(sv:Verdict)-[:AGAINST]->(nv)
+    RETURN f.path AS path, e.tier AS tier, e.owner AS owner, t.id AS taskId, t.status AS taskStatus,
+           coalesce(tv.verdict, sv.verdict) AS verdict, coalesce(tv.reason, sv.reason) AS reason,
+           coalesce(tv.patch, sv.patch) AS patch
+    ORDER BY path`,
+
+  /** Every rule with its current version, market and scope. */
+  listRules: `
+    MATCH (r:Rule)-[:CURRENT]->(v:RuleVersion)
+    MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
+    OPTIONAL MATCH (r)-[s:SCOPE]->(t)
+    WITH r, v, j, collect({path: t.path, source: s.source}) AS scopes
+    RETURN r.id AS ruleId, r.title AS title, r.risk AS risk, j.code AS jurisdiction, v.id AS versionId, v.n AS n,
+           v.figure AS figure, v.unit AS unit, v.status AS status, v.citation AS citation,
+           v.effective_from AS effectiveFrom, v.text AS text, scopes
+    ORDER BY jurisdiction, ruleId`,
+
+  /** Recent propagations, newest first. */
+  listPropagations: `
+    MATCH (p:Propagation)
+    RETURN p.id AS id
+    ORDER BY p.at DESC
+    LIMIT $limit`,
+
+  /** Every review task, with verdict and any live claim. */
+  allTasks: `
+    MATCH (t:ReviewTask)-[:FOR]->(f:File)
+    MATCH (t)-[:ASSIGNED]->(m:Member)
+    MATCH (t)-[:BECAUSE]->(p:Propagation)
+    OPTIONAL MATCH (t)-[:HAS]->(vd:Verdict)
+    OPTIONAL MATCH (c:Claim)-[:ON]->(t)
+    WHERE c.expires_at > $now
+    OPTIONAL MATCH (c)-[:BY]->(cm:Member)
+    RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, f.path AS path, m.name AS assignee,
+           p.rule_id AS ruleId, p.id AS propagationId, vd.verdict AS verdict, vd.reason AS verdictReason,
+           cm.name AS claimBy, t.resolved_reason AS resolvedReason
+    ORDER BY due, path`,
+
+  /** Files Premise knows, with how many recorded changes each has. */
+  listFiles: `
+    MATCH (f:File)
+    OPTIONAL MATCH (f)<-[:TO]-(c:Change)
+    RETURN f.path AS path, count(c) AS changes
+    ORDER BY path`,
+
+  /** Accept a proposed scope: the edge becomes declared. */
+  acceptScope: `
+    MATCH (r:Rule {id: $ruleId})-[s:SCOPE {source: 'proposed'}]->(t)
+    WHERE t.path = $path
+    SET s.source = 'declared'
+    RETURN t.path AS path`,
 
   /** The receipt's numbers, as plain number properties (a map cannot be a property). */
   finishPropagation: `
@@ -484,7 +547,7 @@ export const TEAM = {
     MATCH (:File {path: $path})<-[:FOR]-(t:ReviewTask)-[:BECAUSE]->(p:Propagation)-[:TO]->(nv:RuleVersion)
     MATCH (t)-[:ASSIGNED]->(m:Member)
     OPTIONAL MATCH (t)-[:HAS]->(vd:Verdict)
-    RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, m.name AS assignee,
+    RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, m.name AS assignee, m.id AS assigneeId,
            nv.id AS versionId, p.id AS propagationId, vd.id AS verdictId, vd.verdict AS verdict, vd.reason AS verdictReason`,
 
   /** Q9a. Of these paths, which already have a change from this session. */

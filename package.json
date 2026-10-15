@@ -4,8 +4,12 @@
   "private": true,
   "description": "Shared memory for a team's AI coding agents: which rule each piece of code was written under, and what to fix when a rule changes.",
   "type": "module",
-  "engines": { "node": ">=22" },
-  "bin": { "premise-hook": "./cli/premise-hook.mjs" },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "premise-hook": "./cli/premise-hook.mjs"
+  },
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
@@ -19,6 +23,7 @@
     "@modelcontextprotocol/express": "2.0.2",
     "@modelcontextprotocol/node": "2.1.1",
     "@modelcontextprotocol/server": "2.3.1",
+    "cytoscape": "3.34.3",
     "express": "5.3.0",
     "falkordb": "6.8.0",
     "tsx": "4.23.15",

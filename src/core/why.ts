@@ -16,7 +16,7 @@ interface ChangeRow {
   ruleId?: string; title?: string; jurisdiction?: string; supersededBy: string[];
 }
 interface TaskRow {
-  taskId: string; status: string; due: string; tier: string; assignee: string; versionId: string;
+  taskId: string; status: string; due: string; tier: string; assignee: string; assigneeId: string; versionId: string;
   propagationId: string; verdictId?: string; verdict?: string; verdictReason?: string;
 }
 
@@ -57,7 +57,7 @@ export async function why(db: Db, who: Principal, path: string): Promise<Why> {
     const tk = node(`task:${t.taskId}`, 'ReviewTask', `task ${t.status}, due ${t.due}`);
     edge(tk, file, 'FOR');
     edge(tk, node(`version:${t.versionId}`, 'RuleVersion', t.versionId), 'BECAUSE');
-    edge(tk, node(`member:assignee:${t.assignee}`, 'Member', t.assignee), 'ASSIGNED');
+    edge(tk, node(`member:${t.assigneeId}`, 'Member', t.assignee), 'ASSIGNED');
     if (t.verdictId) edge(tk, node(`verdict:${t.verdictId}`, 'Verdict', `Reviewer: ${t.verdict}`), 'HAS');
   }
 

@@ -9,6 +9,7 @@ import { type Db, DbUnreachable } from './db/client.ts';
 import { buildMcpServer } from './mcp/tools.ts';
 import { PathOutsideRepo } from './paths.ts';
 import type { PropagationQueue } from './propagate/queue.ts';
+import { webRoutes } from './web/routes.ts';
 
 // One Express app: hook endpoints, the MCP endpoint, health. Every hook reply is 200 with a
 // JSON body, because Claude Code ignores status codes on HTTP hooks; a block must be a `deny`.
@@ -96,6 +97,8 @@ export function createApp(db: Db, config: Config, queue: PropagationQueue) {
     await transport.handleRequest(req, res, req.body);
   }));
   app.get('/mcp', (_req, res) => res.status(405).json({ error: 'stateless server: POST only' }));
+
+  app.use(webRoutes(db, queue, config.PREMISE_WEB_MEMBER));
 
   app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof DbUnreachable) return unreachable(req, res);

@@ -3,6 +3,9 @@
 services:
   falkordb:
     image: falkordb/falkordb:v4.22.0
+    # One unexplained segfault (signal 11 in _query) was seen in a parallel test run on
+    # 2026-10-15 and did not reproduce in 80 stress rounds; come back by yourself if it recurs.
+    restart: unless-stopped
     ports:
       - "6379:6379"
     environment:

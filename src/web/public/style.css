@@ -1,0 +1,61 @@
+:root {
+  --bg: #fbfaf8; --fg: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc; --card: #ffffff;
+  --accent: #2b59c3; --ok: #1f7a4d; --bad: #b3261e; --warn: #9a6200;
+  --asked: #5b2bb5; --shown: #2b59c3; --in-scope: #6b6a66;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --fg: #ecebe8; --muted: #a09f9a; --line: #2e2d2a; --card: #1d1c1a;
+    --accent: #8aa9ff; --ok: #5cc48f; --bad: #ff8a80; --warn: #e3b05b;
+    --asked: #b79bff; --shown: #8aa9ff; --in-scope: #a09f9a;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+code, pre { font: 0.88em/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.top { display: flex; gap: 1.5rem; align-items: center; padding: 0.8rem 1.25rem; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { font-weight: 700; text-decoration: none; color: var(--fg); letter-spacing: 0.01em; }
+.top nav { display: flex; gap: 1rem; }
+.top nav a { text-decoration: none; color: var(--muted); }
+.top nav a.on { color: var(--fg); font-weight: 600; }
+.who { margin-left: auto; color: var(--muted); font-size: 0.9rem; }
+main { max-width: 68rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+h1 { font-size: 1.6rem; line-height: 1.25; margin: 0.5rem 0 0.75rem; }
+h2 { font-size: 1.15rem; margin: 1.75rem 0 0.5rem; }
+.lede { color: var(--muted); max-width: 46rem; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; color: var(--muted); }
+.cards { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.25rem 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1.2rem; min-width: 9rem; }
+.card .n { font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.receipts { list-style: none; padding: 0; margin: 0; }
+.receipts li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+.receipts a { color: var(--fg); text-decoration: none; }
+.receipt { font-size: 1.1rem; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 0.9rem 1.1rem; border-radius: 6px; }
+.badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.badge.ok { color: var(--ok); } .badge.bad { color: var(--bad); } .badge.warn { color: var(--warn); } .badge.muted { color: var(--muted); }
+.badge.tier-asked { color: var(--asked); } .badge.tier-shown { color: var(--shown); } .badge.tier-in_scope { color: var(--in-scope); }
+table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+.rule { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; margin: 1rem 0; }
+.rule header { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.rule h2 { margin: 0; font-size: 1.1rem; }
+.rule .j { font-weight: 700; color: var(--muted); }
+.rule .figure { font-size: 1.5rem; font-weight: 700; margin: 0.4rem 0; }
+form.change { display: grid; gap: 0.6rem; margin-top: 0.75rem; max-width: 40rem; }
+form.change label { display: grid; gap: 0.2rem; font-size: 0.9rem; color: var(--muted); }
+form.inline { display: inline-flex; gap: 0.4rem; align-items: center; }
+input, textarea, select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.55rem; }
+textarea { min-height: 4.5rem; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.graph { height: 30rem; background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin: 1rem 0; }
+pre.why { white-space: pre-wrap; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 0.9rem; }
+.error { color: var(--bad); font-weight: 600; }
+footer { max-width: 68rem; margin: 0 auto; padding: 1rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--line); }
+@media (max-width: 640px) { th:nth-child(3), td:nth-child(3) { display: none; } .who { margin-left: 0; } }

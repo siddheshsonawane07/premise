@@ -109,7 +109,9 @@ export async function runPropagation(db: Db, teamId: string, id: string, review:
 
   const found = await run<Finding>(g, TEAM.affectedFiles, { fromId: p.fromId, toId: p.toId }, { readOnly: true });
   for (let i = 0; i < found.length; i += 50) {
-    await run(g, TEAM.writeFindings, { id, files: found.slice(i, i + 50).map((f) => ({ path: f.path, tier: f.tier })) });
+    await run(g, TEAM.writeFindings, {
+      id, files: found.slice(i, i + 50).map((f) => ({ path: f.path, tier: f.tier, owner: f.ownerName })),
+    });
   }
 
   const verdicts = new Map<string, Verdict>();
