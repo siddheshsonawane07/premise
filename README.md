@@ -32,6 +32,21 @@ Premise sits between the agents and the code:
 6. **Every step is kept**, so the path behind any file can be shown: which session changed it,
    relying on which version of which rule, and what has happened since.
 
+Around that core:
+
+- **Rules built on rules.** An internal rule such as "alert at 80% of the cash limit"
+  `DERIVES_FROM` the regulation; a change to the regulation also reaches code written under the
+  derived rule, which never mentions the regulation.
+- **FalkorDB's graph algorithms do the analysis.** `algo.SPpaths` draws the shortest connection
+  from a file to each regulator; `algo.pageRank` ranks the rules others are built on;
+  `algo.WCC` finds rules coupled through shared code. Rule search uses FalkorDB's full-text index.
+- **Audit evidence per rule:** every version, approver and reason, every AI change made under it
+  (file, member, session, model, tier), every review and its resolution; as a page, JSON or CSV.
+- **Handoffs:** a task passed to a teammate carries a note; their next session opens with it.
+- **Team conventions too:** a repository's `.claude/rules/*.md` are imported as versioned rules,
+  scoped by their `paths:`; when a rules file changes, code written under the old convention
+  is found.
+
 The agents in the demo are Claude Code sessions (developers' agents, through hooks and MCP) plus
 Premise's own Reviewer agent (Claude Haiku 5.5). What every agent is told, and what it does next,
 comes out of a graph query.
@@ -46,9 +61,9 @@ comes out of a graph query.
 | Semantic memory | Rules, versioned, with citations, effective dates and markets |
 | Procedural memory | Rules shown before every edit in scope; the standing instruction to look figures up |
 | Persistent history | Every rule version, change, propagation and verdict; the why-path |
-| Shared state and handoffs | Review tasks assigned to the owner's agent, claimed atomically, opened at their next session |
+| Shared state and handoffs | Review tasks assigned to the owner's agent, claimed atomically, handed on with a note (an edge), opened at the next session |
 | High-concurrency reads and writes | Every agent's file read and edit is a graph read or write ([measured](#measurements-and-what-lost)) |
-| Separate memory per tenant | One graph per team, chosen by the caller's key; a cross-tenant test |
+| Separate memory per tenant | One graph per team, chosen by the caller's key; a cross-tenant test through every hook and MCP tool |
 
 ## Setup
 
@@ -64,12 +79,15 @@ PREMISE_WEB_MEMBER=tilldesk.chitra npm start
 ```
 
 Open <http://localhost:8080>: **Rules** (change a rule: a draft dry run, or as the compliance
-member Chitra, a final change), **Receipt**, **Why** (the path, drawn) and **Tasks**.
+member Chitra, a final change; each rule's **audit evidence**), **Receipt**, **Why** (the path,
+drawn, with the shortest route to each regulator), **Impact** (the graph algorithms) and
+**Tasks** (resolve or hand off). The raw graph is in FalkorDB Browser at <http://localhost:3000>.
 
 ```bash
-npm test                                    # 47 tests, against the real FalkorDB
+npm test                                    # 71 tests, against the real FalkorDB
 npx tsx scripts/measure.ts                  # grep vs the rule's folders vs Premise, against an answer key
 npx tsx scripts/ablate.ts                   # what breaks without the graph (start the server first)
+npx tsx scripts/import-rules.ts ../some-repo # a repo's .claude/rules/*.md as versioned rules
 ```
 
 **The Reviewer** needs an Anthropic key: `cp .env.example .env` and set `ANTHROPIC_API_KEY`
@@ -96,6 +114,8 @@ refuses to start if one is missing.
 ```mermaid
 flowchart LR
   Rule -- CURRENT --> RV[RuleVersion]
+  RV -- OF --> Rule
+  Rule -- "DERIVES_FROM {how}" --> Base[Rule]
   RV -- "PARENT · SUPERSEDES {reason}" --> RVold[RuleVersion]
   RV -- APPROVED_BY --> Member
   Rule -- APPLIES_IN --> Jurisdiction
@@ -119,6 +139,7 @@ flowchart LR
   ReviewTask -- HAS --> Verdict
   Verdict -- ON --> FileSnapshot
   Verdict -- AGAINST --> RV
+  ReviewTask -- "HANDED_OFF {note}" --> Member
   Claim -- ON --> ReviewTask
   Claim -- BY --> Member
 ```
@@ -127,9 +148,9 @@ flowchart LR
 |---|---|
 | `Rule` | `id`, `title`, `type`, `risk` |
 | `RuleVersion` | `id` (`<rule>@<n>`), `n`, `text`, `figure` (smallest currency unit), `unit`, `citation`, `effective_from`, `status` (`draft`, `final`) |
-| `Jurisdiction` | `code` (`IN`, `US`), `regulator` |
+| `Jurisdiction` | `code` (`IN`, `US`, and `TEAM` for a team's own conventions), `regulator` |
 | `Folder`, `File` | `path`, always relative to the repo root |
-| `Session` | `id` (Claude Code's session id), `tool`, `started_at` |
+| `Session` | `id` (Claude Code's session id), `tool`, `model`, `started_at` |
 | `Lookup` | `path`, `at`: a member asked for a rule version while writing this path |
 | `Change` | `id` (the tool call's id, so a retried hook records nothing twice), `diff`, `at` |
 | `Propagation` | `dry_run`, `status`, and the receipt's counts as plain numbers |
@@ -295,6 +316,27 @@ RETURN f.path AS path, ownerId, ownerName,
 ORDER BY path
 ```
 
+#### `TEAM.affectedViaDerived`
+
+Q12b. Rules built on the changed rule. An internal rule such as "alert at 80% of the cash limit" DERIVES_FROM the regulation, so when the regulation changes, code written under the derived rule is affected too, even though it never relied on the regulation itself. Follows DERIVES_FROM up to four hops, then back along RELIED_ON from each derived rule's current version to the files.
+
+```cypher
+MATCH (:Rule {id: $ruleId})<-[:DERIVES_FROM*1..4]-(d:Rule)-[:CURRENT]->(dv:RuleVersion)
+MATCH (dv)<-[rel:RELIED_ON]-(:Change)-[:TO]->(f:File)
+WITH f, collect(DISTINCT d.id) AS via, collect(rel.tier) AS tiers
+OPTIONAL MATCH (t:ReviewTask {status: 'resolved'})-[:FOR]->(f), (t)-[:BECAUSE]->(:Propagation)-[:TO]->(:RuleVersion {id: $toId})
+WITH f, via, tiers, count(t) AS resolved
+WHERE resolved = 0
+MATCH (f)<-[:TO]-(lc:Change)-[:IN]->(:Session)-[:BY]->(m:Member)
+WITH f, via, tiers, lc, m
+ORDER BY lc.at DESC
+WITH f, via, tiers, collect(m.id)[0] AS ownerId, collect(m.name)[0] AS ownerName
+RETURN f.path AS path, ownerId, ownerName, via,
+       CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown'
+            WHEN 'in_scope' IN tiers THEN 'in_scope' ELSE 'session' END AS tier
+ORDER BY path
+```
+
 #### `TEAM.openTask`
 
 Q14. One review task per file and new version, in one query: created only if no open task already exists for that file and version, so running a propagation twice opens no duplicates.
@@ -331,6 +373,75 @@ CREATE (c)-[:ON]->(t)
 CREATE (c)-[:BY]->(m)
 RETURN c.id AS claimId
 ```
+
+#### `TEAM.handOff`
+
+Q17b. Hand a task to someone else, with a note, in one query: the ASSIGNED edge moves, the handoff is kept as an edge carrying the note (not a pasted summary), and any live claim on the task ends. The new owner's next session opens with the note.
+
+```cypher
+MATCH (t:ReviewTask {id: $taskId})-[a:ASSIGNED]->(prev:Member)
+WHERE t.status IN ['open', 'proposed_clear']
+MATCH (to:Member {id: $to})
+OPTIONAL MATCH (c:Claim)-[:ON]->(t)
+WHERE c.expires_at > $at
+WITH t, a, prev, to, collect(c) AS claims
+FOREACH (x IN claims | SET x.expires_at = $at)
+DELETE a
+CREATE (t)-[:ASSIGNED]->(to)
+CREATE (t)-[:HANDED_OFF {note: $note, at: $at, from: prev.id, from_name: prev.name, by: $by}]->(to)
+RETURN prev.name AS fromName, to.name AS toName
+```
+
+#### `TEAM.shortestToRegulators`
+
+A1. The shortest connection from a file to each market's regulator, by FalkorDB's algo.SPpaths over the edges that carry meaning (an edit, what it relied on, which rule, what it is built on, where it applies). Folder membership is left out: a file sitting in a folder that serves India is not a reason.
+
+```cypher
+MATCH (f:File {path: $path})
+MATCH (j:Jurisdiction)
+CALL algo.SPpaths({sourceNode: f, targetNode: j, relTypes: ['TO', 'RELIED_ON', 'OF', 'DERIVES_FROM', 'APPLIES_IN'],
+                   relDirection: 'both', maxLen: 8})
+YIELD path, pathWeight
+RETURN j.code AS jurisdiction, j.regulator AS regulator, pathWeight AS hops,
+       [n IN nodes(path) | CASE labels(n)[0]
+          WHEN 'File' THEN 'file:' + n.path
+          WHEN 'Change' THEN 'change:' + n.id
+          WHEN 'RuleVersion' THEN 'version:' + n.id
+          WHEN 'Rule' THEN 'rule:' + n.id
+          WHEN 'Jurisdiction' THEN 'jurisdiction:' + n.code
+          ELSE labels(n)[0] END] AS ids,
+       [n IN nodes(path) | labels(n)[0]] AS kinds,
+       [n IN nodes(path) | CASE labels(n)[0] WHEN 'Change' THEN 'an edit' WHEN 'RuleVersion' THEN n.id
+          ELSE coalesce(n.path, n.title, n.code) END] AS labels,
+       [e IN relationships(path) | type(e)] AS rels
+ORDER BY hops
+```
+
+#### `TEAM.rulePageRank`
+
+A2. Foundational rules: algo.pageRank over DERIVES_FROM. A rule that other rules are built on ranks higher; changing it moves more than its own figure.
+
+```cypher
+CALL algo.pageRank('Rule', 'DERIVES_FROM')
+YIELD node, score
+RETURN node.id AS ruleId, score
+ORDER BY score DESC
+```
+
+#### `TEAM.ruleClusters`
+
+A4. Coupled rules: FalkorDB's algo.WCC over the code-to-rule graph. Rules land in one component when shared code ties them together, so a change to one can touch files written under another. (Betweenness was tried first: on this engine it follows edge direction only, so a file, which only receives edges, always scores 0.)
+
+```cypher
+CALL algo.WCC({nodeLabels: ['File', 'Change', 'RuleVersion', 'Rule'],
+               relationshipTypes: ['TO', 'RELIED_ON', 'OF', 'DERIVES_FROM']})
+YIELD node, componentId
+WITH componentId, collect(CASE WHEN labels(node)[0] = 'Rule' THEN node.id END) AS rules,
+     collect(CASE WHEN labels(node)[0] = 'File' THEN node.path END) AS files
+WHERE size(rules) > 0
+RETURN componentId, rules, size(files) AS files
+ORDER BY size(rules) DESC
+```
 <!-- queries:end -->
 
 ## Live deployment
@@ -359,19 +470,20 @@ reset on a schedule, with the rule changes runnable from the browser.
 
 **Finding the files a rule change affects.** The answer key
 ([`demo/answer-key.json`](demo/answer-key.json)) was written by hand from the real Tilldesk code
-([`demo/tilldesk`](demo/tilldesk)): 7 files must change if the India limit drops to ₹10,000.
+([`demo/tilldesk`](demo/tilldesk)): 9 files must change if the India limit drops to ₹10,000.
 
 | Method | Right | Missed | Flagged but fine |
 |---|---|---|---|
-| `grep` for the old figure in every spelling | 6 of 7 | `src/admin/monthly-compliance.ts`, the `40_000_00` alert | — |
-| The rule's declared folders | 2 of 7 | 5 files | 3 |
-| **Premise**, before the Reviewer | **7 of 7** | — | `src/wallet/index.ts`, `receipt-email.ts`, `topup.ts` |
+| `grep` for the old figure in every spelling | 7 of 9 | both `40_000_00` literals in `src/admin/`: the alert and the weekly digest | — |
+| The rule's declared folders | 2 of 9 | 7 files | 3 |
+| **Premise**, before the Reviewer | **9 of 9** | — | `src/wallet/index.ts`, `receipt-email.ts`, `topup.ts` |
 
 **What lost, and what changed because of it.**
 
 - **`grep` did far better than we expected.** Real agents annotate the figures they write and copy
-  them into tests, so it found 6 of 7. It misses only the alert, which is the file that matters.
-- **Premise first found only 5 of 7**: two test files were written in the same session as a lookup
+  them into tests, so it found 7 of 9. It misses only the two thresholds derived from the limit,
+  which are the files that matter.
+- **Premise first found only 5 of 7** (before the fifth session): two test files were written in the same session as a lookup
   but never looked up themselves. The fourth tier, `session`, was added to catch exactly that; it
   over-claims by design, and the Reviewer is there to clear what it over-claims.
 - **The Reviewer has not yet been run against the model**, so whether it clears the three files
@@ -408,8 +520,15 @@ measured yet.**
   guard and the recording do not.
 - **FalkorDB v4.22.0:** with the append-only file on, a `SET` on a null from `OPTIONAL MATCH`
   crashes the server and every restart after it, so Premise persists with RDB snapshots and guards
-  every such `SET`. One unexplained segfault was also seen once in a parallel test run and did not
-  reproduce in 80 stress rounds; the container restarts by itself.
+  every such `SET`. Separately, the server segfaulted twice under the parallel test suite while a
+  unique constraint was being created under concurrent queries, then hung in its crash memory test
+  so it never restarted. Neither crash reproduced in isolation. Premise now creates schema with no
+  other query in flight, the tests run one file at a time, and the crash memory test is off so a
+  crash restarts the container.
+- **`algo.betweenness` was tried and dropped:** on this engine it follows edge direction only, so a
+  file, which only receives edges, always scores 0. `algo.WCC` answers the coupling question instead.
+- **The captured sessions predate recording the model**, so their sessions show model `unknown`;
+  new sessions record it.
 - **One repository per team**, and paths are its keys.
 - **The 2026 wallet limit is an RBI draft.** The demo's "final" is labelled as an assumption,
   with an assumed effective date. The US $30,000 threshold is a bill that has not been enacted.
@@ -425,9 +544,10 @@ measured yet.**
 - **Siddhesh decided** the product, the track, the scenario (India and the US), the four tiers
   (including adding `session` after the measurement), what the Reviewer may and may not do, the
   stack, and what is not built; he reviews and can explain every query and choice.
-- **The demo data was made by AI agents**: four headless Claude Code sessions, acting as the
+- **The demo data was made by AI agents**: five headless Claude Code sessions, acting as the
   invented developers Asha and Ben, built Tilldesk through Premise from short task prompts that
-  never mention Premise. Their hook events were captured, scrubbed of local paths, and are
+  never mention Premise. Between the fourth and fifth, the compliance member's early-warning rule
+  was recorded through the `record_rule` MCP tool. Their hook events were captured, scrubbed of local paths, and are
   replayed to build the demo graph ([`demo/events/tilldesk.jsonl`](demo/events/tilldesk.jsonl)).
   One file, `src/wallet/messages.ts`, was written by hand to show a hand edit being caught.
 - **At run time, the Reviewer calls Claude Haiku 5.5** (`claude-haiku-5-5`). Nothing else calls a

@@ -11,7 +11,8 @@ import { CONTROL, TEAM } from '../src/db/queries.ts';
 /** The queries the product's claim rests on, shown in the README itself. */
 export const CORE = [
   'TEAM.rulesForPath', 'TEAM.recordLookup', 'TEAM.sessionLookups', 'TEAM.recordChange',
-  'TEAM.supersede', 'TEAM.affectedFiles', 'TEAM.openTask', 'TEAM.claimTask',
+  'TEAM.supersede', 'TEAM.affectedFiles', 'TEAM.affectedViaDerived', 'TEAM.openTask', 'TEAM.claimTask',
+  'TEAM.handOff', 'TEAM.shortestToRegulators', 'TEAM.rulePageRank', 'TEAM.ruleClusters',
 ];
 
 function docs(): Map<string, string> {
