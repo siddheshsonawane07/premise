@@ -15,7 +15,7 @@ services:
       # RDB snapshots, not the append-only file: on v4.22.0 with AOF on, a write query whose
       # SET lands on a null from OPTIONAL MATCH trips an assertion, kills the server, and then
       # kills it again on every restart while the AOF is replayed (found 2026-10-15).
-      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:-premise-local} --appendonly no --save 60 1"
+      REDIS_ARGS: "--requirepass ${FALKORDB_PASSWORD:-premise-local} --appendonly no --save 60 1 --crash-memcheck-enabled no"
       BROWSER: "${FALKORDB_BROWSER:-1}"
     volumes:
       - falkordb-data:/var/lib/falkordb/data

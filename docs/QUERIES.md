@@ -838,6 +838,84 @@ RETURN t.id AS taskId, t.status AS status, t.due AS due, t.tier AS tier, m.name 
        nv.id AS versionId, p.id AS propagationId, vd.id AS verdictId, vd.verdict AS verdict, vd.reason AS verdictReason
 ```
 
+#### `TEAM.shortestToRegulators`
+
+A1. The shortest connection from a file to each market's regulator, by FalkorDB's algo.SPpaths over the edges that carry meaning (an edit, what it relied on, which rule, what it is built on, where it applies). Folder membership is left out: a file sitting in a folder that serves India is not a reason.
+
+```cypher
+MATCH (f:File {path: $path})
+MATCH (j:Jurisdiction)
+CALL algo.SPpaths({sourceNode: f, targetNode: j, relTypes: ['TO', 'RELIED_ON', 'OF', 'DERIVES_FROM', 'APPLIES_IN'],
+                   relDirection: 'both', maxLen: 8})
+YIELD path, pathWeight
+RETURN j.code AS jurisdiction, j.regulator AS regulator, pathWeight AS hops,
+       [n IN nodes(path) | CASE labels(n)[0]
+          WHEN 'File' THEN 'file:' + n.path
+          WHEN 'Change' THEN 'change:' + n.id
+          WHEN 'RuleVersion' THEN 'version:' + n.id
+          WHEN 'Rule' THEN 'rule:' + n.id
+          WHEN 'Jurisdiction' THEN 'jurisdiction:' + n.code
+          ELSE labels(n)[0] END] AS ids,
+       [n IN nodes(path) | labels(n)[0]] AS kinds,
+       [n IN nodes(path) | CASE labels(n)[0] WHEN 'Change' THEN 'an edit' WHEN 'RuleVersion' THEN n.id
+          ELSE coalesce(n.path, n.title, n.code) END] AS labels,
+       [e IN relationships(path) | type(e)] AS rels
+ORDER BY hops
+```
+
+#### `TEAM.rulePageRank`
+
+A2. Foundational rules: algo.pageRank over DERIVES_FROM. A rule that other rules are built on ranks higher; changing it moves more than its own figure.
+
+```cypher
+CALL algo.pageRank('Rule', 'DERIVES_FROM')
+YIELD node, score
+RETURN node.id AS ruleId, score
+ORDER BY score DESC
+```
+
+#### `TEAM.blastRadius`
+
+A3. Blast radius: files ever written under each rule, directly and through derived rules.
+
+```cypher
+MATCH (r:Rule)-[:APPLIES_IN]->(j:Jurisdiction)
+MATCH (r)-[:CURRENT]->(v:RuleVersion)
+OPTIONAL MATCH (r)<-[:OF]-(:RuleVersion)<-[:RELIED_ON]-(:Change)-[:TO]->(f:File)
+WITH r, j, v, count(DISTINCT f) AS direct
+OPTIONAL MATCH (r)<-[:DERIVES_FROM*1..4]-(:Rule)<-[:OF]-(:RuleVersion)<-[:RELIED_ON]-(:Change)-[:TO]->(g:File)
+OPTIONAL MATCH (r)<-[:DERIVES_FROM*1..4]-(d:Rule)
+RETURN r.id AS ruleId, r.title AS title, r.risk AS risk, j.code AS jurisdiction, v.figure AS figure, v.unit AS unit,
+       direct, count(DISTINCT g) AS viaDerived, collect(DISTINCT d.id) AS derived
+```
+
+#### `TEAM.ruleClusters`
+
+A4. Coupled rules: FalkorDB's algo.WCC over the code-to-rule graph. Rules land in one component when shared code ties them together, so a change to one can touch files written under another. (Betweenness was tried first: on this engine it follows edge direction only, so a file, which only receives edges, always scores 0.)
+
+```cypher
+CALL algo.WCC({nodeLabels: ['File', 'Change', 'RuleVersion', 'Rule'],
+               relationshipTypes: ['TO', 'RELIED_ON', 'OF', 'DERIVES_FROM']})
+YIELD node, componentId
+WITH componentId, collect(CASE WHEN labels(node)[0] = 'Rule' THEN node.id END) AS rules,
+     collect(CASE WHEN labels(node)[0] = 'File' THEN node.path END) AS files
+WHERE size(rules) > 0
+RETURN componentId, rules, size(files) AS files
+ORDER BY size(rules) DESC
+```
+
+#### `TEAM.couplingFiles`
+
+A5. The files that couple rules: written under more than one rule.
+
+```cypher
+MATCH (f:File)<-[:TO]-(:Change)-[:RELIED_ON]->(:RuleVersion)-[:OF]->(r:Rule)
+WITH f, collect(DISTINCT r.id) AS rules
+WHERE size(rules) > 1
+RETURN f.path AS path, rules
+ORDER BY size(rules) DESC, path
+```
+
 #### `TEAM.lastChangeAt`
 
 Q9a. When Premise last recorded a change to each of these paths.

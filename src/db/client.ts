@@ -81,13 +81,46 @@ export class Db {
   }
 }
 
+// Schema changes (indexes, unique constraints) run alone. FalkorDB v4.22.0 segfaulted twice on
+// 2026-10-15 while a constraint was being created under concurrent queries; neither crash
+// reproduced in isolation, so in this process a schema change waits for in-flight queries to
+// finish and holds new ones until it is done.
+let inFlight = 0;
+let schemaBusy: Promise<void> | undefined;
+const drained: (() => void)[] = [];
+
+export async function exclusiveSchema<T>(fn: () => Promise<T>): Promise<T> {
+  while (schemaBusy) await schemaBusy;
+  let release!: () => void;
+  schemaBusy = new Promise<void>((r) => { release = r; });
+  try {
+    if (inFlight > 0) await new Promise<void>((r) => drained.push(r));
+    return await fn();
+  } finally {
+    schemaBusy = undefined;
+    release();
+  }
+}
+
 /** Run one query. Values only ever travel as parameters (STRICT 5.5). */
 export async function run<T = Record<string, unknown>>(
   graph: Graph,
   cypher: string,
   params: Params = {},
-  opts: { readOnly?: boolean; timeoutMs?: number } = {},
+  opts: { readOnly?: boolean; timeoutMs?: number; schema?: boolean } = {},
 ): Promise<T[]> {
+  if (!opts.schema) {
+    while (schemaBusy) await schemaBusy;
+    inFlight++;
+  }
+  try {
+    return await execute<T>(graph, cypher, params, opts);
+  } finally {
+    if (!opts.schema && --inFlight === 0) drained.splice(0).forEach((r) => r());
+  }
+}
+
+async function execute<T>(graph: Graph, cypher: string, params: Params, opts: { readOnly?: boolean; timeoutMs?: number }): Promise<T[]> {
   const options = { params: params as never, TIMEOUT: opts.timeoutMs ?? 2000 };
   const call = opts.readOnly ? graph.roQuery<T>(cypher, options) : graph.query<T>(cypher, options);
   const wait = downSince ? DOWN_WAIT_MS : (opts.timeoutMs ?? 2000) + CLIENT_WAIT_MS;

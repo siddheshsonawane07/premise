@@ -14,9 +14,9 @@
   var tierColour = { asked: v('--asked'), shown: v('--shown'), in_scope: v('--in-scope'), session: v('--session') };
   window.cytoscape({
     container: el,
-    elements: g.nodes.map(function (n) { return { data: { id: n.id, label: n.kind + '\n' + n.label, kind: n.kind } }; })
+    elements: g.nodes.map(function (n) { return { data: { id: n.id, label: n.kind + '\n' + n.label, kind: n.kind, sp: !!n.sp } }; })
       .concat(g.edges.map(function (e, i) {
-        return { data: { id: 'e' + i, source: e.from, target: e.to, label: e.label ? e.type + ' {' + e.label + '}' : e.type, tier: e.label || '' } };
+        return { data: { id: 'e' + i, source: e.from, target: e.to, label: e.label ? e.type + ' {' + e.label + '}' : e.type, tier: e.label || '', sp: !!e.sp } };
       })),
     layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.15, padding: 20 },
     style: [
@@ -24,11 +24,13 @@
         'label': 'data(label)', 'text-wrap': 'wrap', 'text-max-width': 150, 'font-size': 10, 'color': v('--fg'),
         'text-valign': 'bottom', 'text-margin-y': 4, 'width': 18, 'height': 18,
         'background-color': function (n) { return colour[n.data('kind')] || v('--muted'); } } },
+      { selector: 'node[?sp]', style: { 'border-width': 3, 'border-color': v('--accent') } },
       { selector: 'edge', style: {
         'label': 'data(label)', 'font-size': 9, 'color': v('--muted'), 'text-rotation': 'autorotate',
         'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'width': 1.5,
         'line-color': function (e) { return tierColour[e.data('tier')] || v('--line'); },
         'target-arrow-color': function (e) { return tierColour[e.data('tier')] || v('--line'); } } },
+      { selector: 'edge[?sp]', style: { 'width': 4, 'line-color': v('--accent'), 'target-arrow-color': v('--accent') } },
     ],
     wheelSensitivity: 0.2,
   });

@@ -24,7 +24,7 @@ export class Raw {
 export const raw = (s: string) => new Raw(s);
 
 export function page(opts: { title: string; who: string; active: string; body: Raw; refresh?: number; script?: string }): string {
-  const nav = [['/', 'Overview'], ['/rules', 'Rules'], ['/tasks', 'Tasks'], ['/why', 'Why']] as const;
+  const nav = [['/', 'Overview'], ['/rules', 'Rules'], ['/tasks', 'Tasks'], ['/why', 'Why'], ['/impact', 'Impact']] as const;
   return html`<!doctype html>
 <html lang="en">
 <head>

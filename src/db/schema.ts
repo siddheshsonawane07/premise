@@ -1,5 +1,8 @@
 import { ConstraintType, EntityType, type Graph } from 'falkordb';
-import { run } from './client.ts';
+import { exclusiveSchema, run as runQuery } from './client.ts';
+
+// Every schema statement runs inside exclusiveSchema (see client.ts), so no other query overlaps it.
+const run: typeof runQuery = (g, c, p = {}, o = {}) => runQuery(g, c, p, { ...o, schema: true });
 
 // The closed list of node labels and their keys (STRICT 7.5). Every key gets a range
 // index and a unique constraint, so a retried hook can never create a second node.
@@ -49,11 +52,11 @@ export const CONTROL_KEYS: readonly Key[] = [
 export class SchemaMissing extends Error {}
 
 export async function ensureTeamSchema(graph: Graph): Promise<void> {
-  await ensure(graph, TEAM_KEYS, TEAM_EXTRA_INDEXES, TEAM_FULLTEXT);
+  await exclusiveSchema(() => ensure(graph, TEAM_KEYS, TEAM_EXTRA_INDEXES, TEAM_FULLTEXT));
 }
 
 export async function ensureControlSchema(graph: Graph): Promise<void> {
-  await ensure(graph, CONTROL_KEYS, []);
+  await exclusiveSchema(() => ensure(graph, CONTROL_KEYS, []));
 }
 
 export async function verifyTeamSchema(graph: Graph): Promise<void> {

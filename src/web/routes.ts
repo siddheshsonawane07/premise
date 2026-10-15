@@ -4,6 +4,7 @@ import express, { type NextFunction, type Request, type Response, type Router } 
 import type { Principal } from '../auth.ts';
 import { getPropagation, NotAllowed, type PropagationView, receipt, resolveTask, supersede } from '../core/change.ts';
 import { formatFigure } from '../core/rules.ts';
+import { impact, overlayPaths, shortestToRegulators } from '../core/impact.ts';
 import { why } from '../core/why.ts';
 import { type Db, one, run } from '../db/client.ts';
 import { CONTROL, TEAM } from '../db/queries.ts';
@@ -159,7 +160,8 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
   r.get('/why', wrap(async (req, res, who) => {
     const files = await run<{ path: string; changes: number }>(db.team(who.teamId), TEAM.listFiles, {}, { readOnly: true });
     const p = typeof req.query.path === 'string' ? req.query.path : '';
-    const w = p ? await why(db, who, p) : undefined;
+    const paths = p ? await shortestToRegulators(db, who, p) : [];
+    const w = p ? overlayPaths(await why(db, who, p), paths) : undefined;
     res.send(page({ title: 'Why', who: who.name, active: '/why', body: html`
       <h1>Why is this file the way it is?</h1>
       <form method="get" action="/why" class="inline">
@@ -168,11 +170,36 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
         </select>
       </form>
       ${w ? html`
+        <h2>Shortest connection to each regulator <span class="small">(FalkorDB <code>algo.SPpaths</code>, highlighted)</span></h2>
+        ${paths.length ? html`<ul class="paths">${paths.map((sp) => html`<li><b>${sp.jurisdiction}</b> (${sp.regulator}), ${sp.hops} hops: ${sp.labels.map((l, i) => html`${i ? html` <span class="rel">${sp.rels[i - 1]}</span> ` : ''}<code>${l}</code>`)}</li>`)}</ul>`
+          : html`<p class="muted">This file is not connected to any regulator: no change to it relied on a rule.</p>`}
         <div id="graph" class="graph" aria-label="The path from this file to the rules its changes relied on"></div>
         <pre class="why">${w.text}</pre>
         <script type="application/json" id="why-data">${raw(JSON.stringify({ nodes: w.nodes, edges: w.edges }).replace(/</g, '\\u003c'))}</script>
       ` : ''}
     `, script: w ? '<script src="/static/vendor/cytoscape.min.js"></script><script src="/static/app.js"></script>' : undefined }));
+  }));
+
+  // ── Impact: graph algorithms over the whole team graph ─────────────────────
+  r.get('/impact', wrap(async (_req, res, who) => {
+    const im = await impact(db, who);
+    const max = Math.max(...im.rules.map((x) => x.pageRank), 0.0001);
+    res.send(page({ title: 'Impact', who: who.name, active: '/impact', body: html`
+      <h1>Where a rule change would land</h1>
+      <p class="lede">Computed over the whole graph with FalkorDB's built-in algorithms, not by searching the code.</p>
+      <h2>Foundational rules <span class="small">(<code>algo.pageRank</code> over <code>DERIVES_FROM</code>)</span></h2>
+      <table><thead><tr><th>Rule</th><th>Figure</th><th>Foundational</th><th>Files written under it</th><th>Via rules built on it</th></tr></thead>
+      <tbody>${im.rules.map((x) => html`<tr>
+        <td><b>[${x.jurisdiction}]</b> ${x.title}<div class="small"><code>${x.ruleId}</code>${x.derived.length ? html` · built on by ${x.derived.join(', ')}` : ''}</div></td>
+        <td>${fig(x.figure, x.unit)}</td>
+        <td><div class="bar"><span style="width:${raw(String(Math.round((x.pageRank / max) * 100)))}%"></span></div><div class="small">${x.pageRank.toFixed(3)}</div></td>
+        <td>${x.direct}</td><td>${x.viaDerived}</td>
+      </tr>`)}</tbody></table>
+      <h2>Rules coupled through shared code <span class="small">(<code>algo.WCC</code>)</span></h2>
+      ${im.clusters.map((c) => html`<p>${c.rules.length > 1 ? 'Coupled:' : 'On its own:'} ${c.rules.map((id) => html`<code>${id}</code> `)} <span class="small">(${c.files} files)</span></p>`)}
+      ${im.coupling.length ? html`<p class="muted">Files that tie them together, each written under more than one rule:</p>
+        <ul>${im.coupling.map((f) => html`<li><a href="/why?path=${encodeURIComponent(f.path)}"><code>${f.path}</code></a>: ${f.rules.join(', ')}</li>`)}</ul>` : ''}
+    ` }));
   }));
 
   // ── Tasks ────────────────────────────────────────────────────────────────

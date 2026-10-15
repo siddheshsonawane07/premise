@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Db, run } from '../src/db/client.ts';
+import { impact, shortestToRegulators } from '../src/core/impact.ts';
 import { personalLeaks } from '../src/replay/scrub.ts';
 import { deleteTeam, seedDemo } from '../src/replay/seed.ts';
 import { testDb, uniqueTeamId } from './helpers/db.ts';
@@ -59,5 +60,29 @@ describe('replay rebuilds the live graph', () => {
       "MATCH (:File {path: 'src/admin/monthly-compliance.ts'})-[:LATEST]->(s:FileSnapshot) RETURN s.content AS c", {}, { readOnly: true });
     expect(row?.c).toContain('40_000_00');
     expect(row?.c).not.toMatch(/50_000_00|50,000|import|\/\//);
+  });
+});
+
+describe('graph algorithms on the captured graph', () => {
+  const who = () => ({ memberId: `${teamId}.chitra`, name: 'Chitra', role: 'compliance' as const, teamId });
+
+  it('algo.SPpaths: the shared file reaches both regulators in 4 hops; the US report only the US', async () => {
+    const shared = await shortestToRegulators(db, who(), 'src/core/cash-intake.ts');
+    expect(shared.map((p) => [p.jurisdiction, p.hops])).toEqual([['IN', 4], ['US', 4]]);
+    expect(shared[0]!.rels).toEqual(['TO', 'RELIED_ON', 'OF', 'APPLIES_IN']);
+    const us = await shortestToRegulators(db, who(), 'src/markets/us/ctr-report.ts');
+    expect(us.map((p) => p.jurisdiction)).toEqual(['US']);
+  });
+
+  it('algo.pageRank ranks the RBI rule as foundational: the early-warning rule is built on it', async () => {
+    const im = await impact(db, who());
+    expect(im.rules[0]).toMatchObject({ ruleId: 'in-cash-load', derived: ['in-early-warning'] });
+    expect(im.rules[0]!.viaDerived).toBeGreaterThan(0);
+  });
+
+  it('algo.WCC finds the three rules coupled through shared code, and names the files that couple them', async () => {
+    const im = await impact(db, who());
+    expect(im.clusters[0]!.rules.sort()).toEqual(['in-cash-load', 'in-early-warning', 'us-ctr']);
+    expect(im.coupling.map((c) => c.path)).toContain('src/core/cash-intake.ts');
   });
 });
