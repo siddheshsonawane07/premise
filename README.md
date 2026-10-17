@@ -46,6 +46,13 @@ Around that core:
   shortest connection from a file to each regulator (`algo.SPpaths`).
 - **Audit evidence per rule:** every version, approver and reason, every AI change made under it
   (file, member, session, model, tier), every review and its resolution; as a page, JSON or CSV.
+- **Guessed figures, in one queue.** An agent that needs a figure nobody recorded writes it down as
+  a draft with its source ("unverified: from memory") instead of typing it silently. The Guesses
+  page lists each one with whose agent recorded it and every file already built on it, most relied
+  on first. Compliance confirms it against a named source (the draft becomes final in place, with
+  an `APPROVED_BY` edge) or corrects it, which is a rule change that opens a task for each of those
+  files. The Tallyroll sessions left eight such figures, among them the EPF rate (12%), the EPS
+  share (8.33%) and the FLSA overtime rate.
 - **Handoffs:** a task passed to a teammate carries a note; their next session opens with it.
 - **Team conventions too:** a repository's `.claude/rules/*.md` are imported as versioned rules,
   scoped by their `paths:`; when a rules file changes, code written under the old convention
@@ -154,7 +161,7 @@ flowchart LR
 | Label | Properties that matter |
 |---|---|
 | `Rule` | `id`, `title`, `type`, `risk` |
-| `RuleVersion` | `id` (`<rule>@<n>`), `n`, `text`, `figure` (smallest currency unit), `unit`, `citation`, `effective_from`, `status` (`draft`, `final`) |
+| `RuleVersion` | `id` (`<rule>@<n>`), `n`, `text`, `figure` (smallest currency unit), `unit`, `citation`, `effective_from`, `status` (`draft`, `final`), and on a confirmed guess `verified_citation` |
 | `Jurisdiction` | `code` (`IN`, `US`, and `TEAM` for a team's own conventions), `regulator` |
 | `Folder`, `File` | `path`, always relative to the repo root |
 | `Session` | `id` (Claude Code's session id), `tool`, `model`, `started_at` |

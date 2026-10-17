@@ -7,6 +7,7 @@ import { formatFigure } from '../core/rules.ts';
 import { auditCsv, auditPack } from '../core/audit.ts';
 import { impact, overlayPaths, shortestToRegulators } from '../core/impact.ts';
 import { why } from '../core/why.ts';
+import { confirmGuess, type Guess, listGuesses } from '../core/guesses.ts';
 import { type Db, one, run } from '../db/client.ts';
 import { CONTROL, TEAM } from '../db/queries.ts';
 import type { PropagationQueue } from '../propagate/queue.ts';
@@ -55,10 +56,11 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
   // ── Overview ─────────────────────────────────────────────────────────────
   r.get('/', wrap(async (_req, res, who) => {
     const g = db.team(who.teamId);
-    const [rules, props, tasks] = await Promise.all([
+    const [rules, props, tasks, guesses] = await Promise.all([
       run<RuleRow>(g, TEAM.listRules, {}, { readOnly: true }),
       run<{ id: string }>(g, TEAM.listPropagations, { limit: 8 }, { readOnly: true }),
       run<TaskRow>(g, TEAM.allTasks, { now: Date.now() }, { readOnly: true }),
+      listGuesses(db, who.teamId),
     ]);
     const views = (await Promise.all(props.map((p) => getPropagation(db, who.teamId, p.id)))).filter(Boolean) as PropagationView[];
     const open = tasks.filter((t) => t.status !== 'resolved');
@@ -70,6 +72,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
         <div class="card"><div class="n">${rules.length}</div><div>rules</div></div>
         <div class="card"><div class="n">${open.length}</div><div>open review tasks</div></div>
         <div class="card"><div class="n">${views.length}</div><div>recent rule changes</div></div>
+        <a class="card" href="/guesses"><div class="n">${guesses.length}</div><div>guessed figures to confirm</div></a>
       </section>
       <h2>Recent rule changes</h2>
       ${views.length ? html`<ul class="receipts">${views.map((p) => html`<li><a href="/receipt/${p.id}">${badge(p.dryRun ? 'muted' : 'warn', p.dryRun ? 'dry run' : 'final')} ${receipt(p)}</a></li>`)}</ul>`
@@ -130,6 +133,51 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
   r.post('/rules/:id/accept-scope', wrap(async (req, res, who) => {
     await run(db.team(who.teamId), TEAM.acceptScope, { ruleId: String(req.params.id), path: String(req.body.path ?? '') });
     res.redirect(303, '/rules');
+  }));
+
+  // ── Guessed figures: drafts an agent recorded, waiting for compliance ─────
+  r.get('/guesses', wrap(async (_req, res, who) => {
+    const guesses = await listGuesses(db, who.teamId);
+    const files = (g: Guess) => [...new Set([...g.files, ...g.asked])].sort();
+    res.send(page({ title: 'Guessed figures', who: who.name, active: '/guesses', body: html`
+      <h1>Figures an AI agent guessed (${guesses.length})</h1>
+      <p class="lede">An agent that needed a figure no one had recorded wrote it down as a draft, with its source, instead of
+      typing it silently into the code. Each one waits here for compliance. The most-relied-on comes first: if it is wrong,
+      it is wrong in every file listed.</p>
+      ${guesses.length ? guesses.map((g) => html`<article class="rule">
+        <header><span class="j">${g.jurisdiction}</span> <h2>${g.title}</h2> ${badge('warn', 'unconfirmed')}</header>
+        <p class="figure">${fig(g.figure, g.unit) || 'no single figure'}</p>
+        <p>${g.text}</p>
+        <p class="muted">Recorded by ${g.authorName ?? 'an agent'}'s agent. Its source: ${g.citation}.</p>
+        <p><b>${files(g).length} file${files(g).length === 1 ? '' : 's'} already built on it:</b>
+          ${files(g).map((p) => html`<a href="/why?path=${encodeURIComponent(p)}"><code>${p}</code></a> `)}</p>
+        ${who.role === 'compliance' ? html`<div class="row">
+          <details><summary>Confirm it</summary>
+            <form method="post" action="/guesses/${g.ruleId}/confirm" class="change">
+              <label>The source you checked it against <input name="citation" required maxlength="300"
+                value="${g.citation.replace(/^unverified:\s*from memory\s*[—-]\s*/i, '')}"></label>
+              <button class="primary">Confirm ${fig(g.figure, g.unit)}</button>
+            </form>
+          </details>
+          <details><summary>Correct it</summary>
+            <form method="post" action="/rules/${g.ruleId}/supersede" class="change">
+              <label>Correct text <textarea name="text" required maxlength="1000">${g.text}</textarea></label>
+              <label>Correct figure (${g.unit ?? 'none'}) <input name="figure" type="number" step="1" value="${g.figure ?? ''}"></label>
+              <label>Source <input name="citation" required maxlength="300" placeholder="Where the correct figure comes from"></label>
+              <label>Effective from <input name="effectiveFrom" type="date" required value="${g.effectiveFrom}"></label>
+              <input type="hidden" name="reason" value="Corrected an agent's guess">
+              <input type="hidden" name="unit" value="${g.unit ?? ''}">
+              <button name="mode" value="final" class="primary">Correct it and open tasks for these files</button>
+            </form>
+          </details>
+        </div>` : html`<p class="muted">Only a compliance member can confirm or correct it.</p>`}
+      </article>`) : html`<p class="muted">No guessed figures are waiting.</p>`}
+    ` }));
+  }));
+
+  r.post('/guesses/:id/confirm', wrap(async (req, res, who) => {
+    await confirmGuess(db, who, String(req.params.id), String(req.body.citation ?? ''));
+    res.redirect(303, '/guesses');
   }));
 
   // ── Receipt ──────────────────────────────────────────────────────────────

@@ -767,6 +767,36 @@ RETURN r.id AS ruleId, r.title AS title, r.risk AS risk, j.code AS jurisdiction,
 ORDER BY jurisdiction, ruleId
 ```
 
+#### `TEAM.guessedFigures`
+
+Q18. The guessed-figures queue: rules whose current version is still a draft, recorded by an agent that had no source to hand ("unverified: from memory"). For each, who recorded it and how much code already rests on it: the files whose changes relied on it, and the files agents looked it up for. The most-relied-on guess comes first, since a wrong one costs most.
+
+```cypher
+MATCH (r:Rule)-[:CURRENT]->(v:RuleVersion {status: 'draft'})
+MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
+OPTIONAL MATCH (a:Member) WHERE a.id = v.author
+OPTIONAL MATCH (v)<-[:RELIED_ON]-(:Change)-[:TO]->(f:File)
+WITH r, v, j, a, collect(DISTINCT f.path) AS files
+OPTIONAL MATCH (l:Lookup)-[:OF]->(v)
+WITH r, v, j, a, files, collect(DISTINCT l.path) AS asked
+RETURN r.id AS ruleId, r.title AS title, j.code AS jurisdiction, v.id AS versionId, v.figure AS figure,
+       v.unit AS unit, v.text AS text, v.citation AS citation, v.effective_from AS effectiveFrom,
+       a.name AS authorName, files, asked
+ORDER BY size(files) DESC, size(asked) DESC, ruleId
+```
+
+#### `TEAM.confirmGuess`
+
+Q19. Compliance confirms a guessed figure as it stands. Nothing about the rule changed, so no new version and no propagation: the draft becomes final, with the source compliance checked it against and an APPROVED_BY edge. Every RELIED_ON edge already points at this version, so a later change to the rule still finds the code built on it.
+
+```cypher
+MATCH (r:Rule {id: $ruleId})-[:CURRENT]->(v:RuleVersion {status: 'draft'})
+MATCH (m:Member {id: $member})
+SET v.status = 'final', v.verified_citation = $citation, v.verified_at = $at
+CREATE (v)-[:APPROVED_BY {at: $at, reason: $reason}]->(m)
+RETURN v.id AS versionId
+```
+
 #### `TEAM.listPropagations`
 
 Recent propagations, newest first.
