@@ -18,7 +18,7 @@ a { color: var(--accent); }
 code, pre { font: 0.88em/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .top { display: flex; gap: 1.5rem; align-items: center; padding: 0.8rem 1.25rem; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .brand { font-weight: 700; text-decoration: none; color: var(--fg); letter-spacing: 0.01em; }
-.top nav { display: flex; gap: 1rem; }
+.top nav { display: flex; gap: 1rem; flex-wrap: wrap; }
 .top nav a { text-decoration: none; color: var(--muted); }
 .top nav a.on { color: var(--fg); font-weight: 600; }
 .who { margin-left: auto; color: var(--muted); font-size: 0.9rem; }
@@ -63,3 +63,37 @@ footer { max-width: 68rem; margin: 0 auto; padding: 1rem; color: var(--muted); f
 @media (max-width: 640px) { th:nth-child(3), td:nth-child(3) { display: none; } .who { margin-left: 0; } }
 .figure-sm { font-weight: 700; margin-left: 0.4rem; }
 h3 { font-size: 1rem; margin: 1.2rem 0 0.4rem; }
+
+/* 2026-10-17: plainer pages. Home, Rules, Why. */
+.button { display: inline-block; text-decoration: none; font-weight: 600; border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.8rem; color: var(--fg); background: var(--card); cursor: pointer; }
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.button.big { font-size: 1.05rem; padding: 0.7rem 1.2rem; white-space: nowrap; }
+.button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.start { display: flex; gap: 1.25rem; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+.start > div { flex: 1 1 22rem; min-width: 0; }
+.start h2 { margin: 0 0 0.3rem; }
+.start p { margin: 0; }
+ul.todo { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+ul.todo li { display: grid; gap: 0.15rem; padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 6px; background: var(--card); }
+ol.how { padding-left: 1.3rem; display: grid; gap: 0.45rem; max-width: 46rem; }
+.rule .facts { display: flex; gap: 1.5rem; align-items: baseline; flex-wrap: wrap; }
+.rule .facts p { margin: 0.4rem 0; }
+.rule .reach { color: var(--muted); }
+.rule .reach b { color: var(--fg); font-size: 1.15rem; }
+details.quiet > summary { cursor: pointer; color: var(--muted); font-size: 0.92rem; margin: 0.4rem 0; }
+details.act { margin-top: 0.6rem; }
+details.act > summary { list-style: none; }
+details.act > summary::-webkit-details-marker { display: none; }
+details.act[open] > summary { background: var(--card); color: var(--fg); border-color: var(--line); }
+ul.plain { list-style: none; padding: 0; margin: 0.4rem 0; display: grid; gap: 0.35rem; }
+form.change > label { color: var(--muted); font-size: 0.9rem; margin-bottom: -0.35rem; }
+.money { display: flex; align-items: center; gap: 0.4rem; }
+.money span { font-weight: 700; }
+.money input { max-width: 14rem; }
+ol.chains { list-style: none; padding: 0; margin: 1.25rem 0; display: grid; gap: 0.75rem; }
+.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.8rem 0.9rem; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.chain .link { padding: 0.3rem 0.55rem; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.chain .link.rule { border-color: var(--accent); }
+.chain .link.market { border-color: var(--warn); }
+.chain .arrow { color: var(--muted); }
+.graph-details { margin-top: 1.5rem; }

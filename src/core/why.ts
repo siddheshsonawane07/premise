@@ -8,7 +8,13 @@ import { formatFigure } from './rules.ts';
 
 export interface GNode { id: string; kind: string; label: string }
 export interface GEdge { from: string; to: string; type: string; label?: string }
-export interface Why { path: string; nodes: GNode[]; edges: GEdge[]; text: string }
+/** One recorded change to the file and the rule version it relied on, for the readable chain. */
+export interface WhyStep {
+  at: number; member: string; tool?: string; tier?: string; ruleId?: string; title?: string; n?: number;
+  figure?: number; unit?: string; status?: string; jurisdiction?: string; supersededBy: string[];
+}
+export interface WhyTask { status: string; due: string; assignee: string; verdict?: string; verdictReason?: string }
+export interface Why { path: string; nodes: GNode[]; edges: GEdge[]; text: string; steps: WhyStep[]; tasks: WhyTask[] }
 
 interface ChangeRow {
   changeId: string; at: number; diff: string; sessionId: string; tool?: string; memberId: string; member: string;
@@ -75,5 +81,12 @@ export async function why(db: Db, who: Principal, path: string): Promise<Why> {
       (t.verdict ? `; Reviewer says ${t.verdict}: ${t.verdictReason}` : '') + '.');
   }
   if (!changes.length) lines.push('- No recorded changes.');
-  return { path, nodes: [...nodes.values()], edges, text: lines.join('\n') };
+  const steps: WhyStep[] = changes.map((c) => ({
+    at: c.at, member: c.member, tool: c.tool, tier: c.tier, ruleId: c.ruleId, title: c.title, n: c.n,
+    figure: c.figure, unit: c.unit, status: c.status, jurisdiction: c.jurisdiction, supersededBy: c.supersededBy,
+  }));
+  const taskList: WhyTask[] = tasks.map((t) => ({
+    status: t.status, due: t.due, assignee: t.assignee, verdict: t.verdict, verdictReason: t.verdictReason,
+  }));
+  return { path, nodes: [...nodes.values()], edges, text: lines.join('\n'), steps, tasks: taskList };
 }

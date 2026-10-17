@@ -95,13 +95,17 @@ npx tsx scripts/setup-demo.ts --replay      # the Tilldesk demo graph, rebuilt f
 PREMISE_WEB_MEMBER=tilldesk.chitra npm start
 ```
 
-Open <http://localhost:8080>: **Rules** (change a rule: a draft dry run, or as the compliance
-member Chitra, a final change; each rule's **audit evidence**), **Receipt**, **Why** (the path,
-drawn, with the shortest route to each regulator), **Impact** (the graph algorithms) and
-**Tasks** (resolve or hand off). The raw graph is in FalkorDB Browser at <http://localhost:3000>.
+Open <http://localhost:8080>. **Home** says what is waiting for you; **Rules** lists the official
+rules with how many files each is built into, and changes one (a preview that assigns nothing, or,
+as the compliance member Chitra, an official change that assigns a fix per file; money is typed in
+₹ or $); the **receipt** that follows lists every file found, the Reviewer's answer and the
+one-click fix; **Guesses** holds the figures agents recorded from memory; **Tasks** the fixes to
+make; **Why** the chain from a file to each regulator, in words and as the graph. The graph
+algorithms (`algo.pageRank`, `algo.WCC`) are at <http://localhost:8080/impact>, left out of the
+menu. The raw graph is in FalkorDB Browser at <http://localhost:3000>.
 
 ```bash
-npm test                                    # 79 tests, against the real FalkorDB
+npm test                                    # 102 tests, against the real FalkorDB
 npx tsx scripts/measure.ts                  # grep vs the rule's folders vs Premise, against an answer key
 npx tsx scripts/measure.ts --payroll --rule us-flsa-salary  # the second test (setup-demo.ts --payroll --replay first)
 npx tsx scripts/ablate.ts                   # what breaks without the graph (start the server first)

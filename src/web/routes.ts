@@ -2,11 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
 import type { Principal } from '../auth.ts';
-import { getPropagation, handOff, NotAllowed, type PropagationView, receipt, resolveTask, supersede } from '../core/change.ts';
+import { getPropagation, handOff, NotAllowed, type PropagationView, resolveTask, supersede } from '../core/change.ts';
 import { formatFigure } from '../core/rules.ts';
 import { auditCsv, auditPack } from '../core/audit.ts';
 import { impact, overlayPaths, shortestToRegulators } from '../core/impact.ts';
-import { why } from '../core/why.ts';
+import { why, type WhyStep } from '../core/why.ts';
 import { confirmGuess, type Guess, listGuesses } from '../core/guesses.ts';
 import { fixSet } from '../core/fix.ts';
 import { type Db, one, run } from '../db/client.ts';
@@ -37,7 +37,38 @@ const fig = (f?: number, u?: string) => formatFigure(f, u).replace(/ \(.*\)$/, '
 const badge = (cls: string, text: string) => html`<span class="badge ${cls}">${text}</span>`;
 const verdictBadge = (v?: string) =>
   v === 'needs_change' ? badge('bad', 'needs change') : v === 'still_fine' ? badge('ok', 'still fine') : badge('muted', v ?? 'not reviewed');
-const tierBadge = (t: string) => badge(`tier-${t}`, t.replace('_', ' '));
+// Why a file was linked to a rule, in words; the stored tier name stays in the tooltip.
+const TIER_WORDS: Record<string, string> = {
+  asked: 'its AI looked the rule up', shown: 'its AI was shown the rule', in_scope: "edited in the rule's folders",
+  session: 'looked up in the same session', mentions: 'still has the old figure',
+};
+const CHAIN_WORDS: Record<string, string> = {
+  asked: 'looked the rule up first', shown: 'was shown the rule first', in_scope: "worked in the rule's folders",
+  session: 'looked the rule up for another file', mentions: 'left the old figure in',
+};
+const tierBadge = (t: string) => html`<span class="badge tier-${t}" title="tier: ${t}">${TIER_WORDS[t] ?? t.replace('_', ' ')}</span>`;
+
+/** The receipt in plain words, for people; receipt() keeps the counted form for agents and tests. */
+function summary(p: PropagationView): string {
+  const what = `${p.title}: ${fig(p.oldFigure, p.unit) || 'old version'} → ${fig(p.newFigure, p.unit) || 'new version'}.`;
+  if (p.status !== 'done') return `${what} Checking the files…`;
+  const total = p.filesTotal ?? 0;
+  const fix = p.needsReview ?? 0;
+  const fine = p.cleared ?? 0;
+  const built = `${total} file${total === 1 ? ' was' : 's were'} built on the old version`;
+  const verdict = `${fix} need${fix === 1 ? 's' : ''} a fix${fine ? `, and the Reviewer says ${fine} ${fine === 1 ? 'is' : 'are'} still fine` : ''}`;
+  if (p.dryRun) return `${what} ${built}: ${verdict}. Nothing has been assigned.`;
+  return `${what} ${built}: ${verdict}. Each fix is assigned, due ${p.effectiveFrom}.`;
+}
+
+/** A figure field in the unit a person thinks in: ₹ or $ for money (stored in paise or cents). */
+function figureInput(id: string, label: string, figure: number | undefined, unit: string | undefined) {
+  const money = unit === 'paise' ? '₹' : unit === 'cents' ? '$' : '';
+  const value = figure === undefined ? '' : money ? String(figure / 100) : String(figure);
+  const hint = money ? `in ${money === '₹' ? 'rupees' : 'dollars'}` : unit === 'percent' ? 'in percent' : unit && unit !== 'none' ? `in ${unit}` : '';
+  return html`<label for="fig-${id}">${label}${hint ? html` <span class="small">(${hint})</span>` : ''}</label>
+    <div class="money">${money ? html`<span>${money}</span>` : ''}<input id="fig-${id}" name="figure" type="number" step="any" value="${value}"></div>`;
+}
 
 export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | undefined): Router {
   const r = express.Router();
@@ -65,51 +96,89 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
     ]);
     const views = (await Promise.all(props.map((p) => getPropagation(db, who.teamId, p.id)))).filter(Boolean) as PropagationView[];
     const open = tasks.filter((t) => t.status !== 'resolved');
-    res.send(page({ title: 'Overview', who: who.name, active: '/', body: html`
-      <h1>Which code was written under which rule</h1>
-      <p class="lede">Premise records, at the moment an AI agent edits a file, which version of which rule it was shown or looked up.
-      When a rule changes, it follows the graph to every file written under the old version.</p>
-      <section class="cards">
-        <div class="card"><div class="n">${rules.length}</div><div>rules</div></div>
-        <div class="card"><div class="n">${open.length}</div><div>open review tasks</div></div>
-        <div class="card"><div class="n">${views.length}</div><div>recent rule changes</div></div>
-        <a class="card" href="/guesses"><div class="n">${guesses.length}</div><div>guessed figures to confirm</div></a>
+    const official = rules.filter((x) => x.status === 'final').length;
+    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+    const todo = [
+      guesses.length ? html`<li><a href="/guesses"><b>${plural(guesses.length, 'figure', 'figures')} an AI assistant guessed</b></a>
+        <span class="muted">Confirm or correct each one; code is already built on them.</span></li>` : '',
+      open.length ? html`<li><a href="/tasks"><b>${plural(open.length, 'file needs', 'files need')} fixing after a rule change</b></a>
+        <span class="muted">Each is assigned to the person whose AI last changed it.</span></li>` : '',
+    ].filter(Boolean);
+    res.send(page({ title: 'Home', who: who.name, active: '/', body: html`
+      <h1>When a rule changes, find the code that is now wrong</h1>
+      <p class="lede">Every time an AI assistant edits a file, Premise remembers which rule it followed.
+      When you change a rule, Premise finds every file built on the old version, checks each one, and gives the developer the fixes.</p>
+
+      <section class="start">
+        <div>
+          <h2>Try it</h2>
+          <p>Pick one of your ${official} rules and change it. A preview shows every file it would touch without assigning anything;
+          making it official gives each file's fix to the right person.</p>
+        </div>
+        <a class="button primary big" href="/rules">Change a rule</a>
       </section>
+
+      <h2>Waiting for you</h2>
+      ${todo.length ? html`<ul class="todo">${todo}</ul>` : html`<p class="muted">Nothing is waiting for you.</p>`}
+
+      <h2>How it works</h2>
+      <ol class="how">
+        <li><b>While code is written.</b> An AI assistant edits a file. Premise tells it which rules apply and records the version it relied on.</li>
+        <li><b>When a rule changes.</b> Premise follows those records to every file built on the old version, including files that only use the figure indirectly.</li>
+        <li><b>Then.</b> Its Reviewer reads each file and clears the ones that are still fine. The developer runs one command to get the fixes on a branch, and merges them.</li>
+      </ol>
+
       <h2>Recent rule changes</h2>
-      ${views.length ? html`<ul class="receipts">${views.map((p) => html`<li><a href="/receipt/${p.id}">${badge(p.dryRun ? 'muted' : 'warn', p.dryRun ? 'dry run' : 'final')} ${receipt(p)}</a></li>`)}</ul>`
-        : html`<p class="muted">No rule has changed yet. <a href="/rules">Change one</a>.</p>`}
+      ${views.length ? html`<ul class="receipts">${views.map((p) => html`<li><a href="/receipt/${p.id}">${badge(p.dryRun ? 'muted' : 'warn', p.dryRun ? 'preview' : 'official')} ${summary(p)}</a></li>`)}</ul>`
+        : html`<p class="muted">No rule has changed yet.</p>`}
     ` }));
   }));
 
   // ── Rules ────────────────────────────────────────────────────────────────
   r.get('/rules', wrap(async (_req, res, who) => {
-    const rules = await run<RuleRow>(db.team(who.teamId), TEAM.listRules, {}, { readOnly: true });
+    const g = db.team(who.teamId);
+    const [all, reach] = await Promise.all([
+      run<RuleRow>(g, TEAM.listRules, {}, { readOnly: true }),
+      run<{ ruleId: string; direct: number; viaDerived: number }>(g, TEAM.blastRadius, {}, { readOnly: true }),
+    ]);
+    const files = new Map(reach.map((x) => [x.ruleId, x.direct + x.viaDerived]));
+    // Agents' unconfirmed figures have their own page; this one is the team's official rules.
+    const rules = all.filter((x) => x.status === 'final');
+    const drafts = all.length - rules.length;
     res.send(page({ title: 'Rules', who: who.name, active: '/rules', body: html`
-      <h1>Rules</h1>
+      <h1>Your rules</h1>
+      <p class="lede">The official rules your team's code is built on. Change one to see every file it touches.
+      ${drafts ? html` ${drafts} more, guessed by AI assistants, wait on <a href="/guesses">Guesses</a> until you confirm them.` : ''}</p>
       ${rules.map((x) => {
         const declared = x.scopes.filter((s) => s.path && s.source === 'declared');
         const proposed = x.scopes.filter((s) => s.path && s.source === 'proposed');
+        const n = files.get(x.ruleId) ?? 0;
         return html`<article class="rule">
-          <header><span class="j">${x.jurisdiction}</span> <h2>${x.title}</h2> ${badge(x.status === 'final' ? 'ok' : 'warn', `v${x.n} ${x.status}`)}</header>
-          <p class="figure">${fig(x.figure, x.unit) || 'no single figure'}</p>
+          <header><span class="j">${x.jurisdiction}</span> <h2>${x.title}</h2></header>
+          <div class="facts">
+            <p class="figure">${fig(x.figure, x.unit) || 'no single figure'}</p>
+            <p class="reach"><b>${n}</b> file${n === 1 ? '' : 's'} built on it</p>
+          </div>
           <p>${x.text}</p>
-          <p class="muted">Citation: ${x.citation}. Effective ${x.effectiveFrom}. Rule id <code>${x.ruleId}</code>. <a href="/audit/${x.ruleId}">Audit evidence</a></p>
-          <p>Scope: ${declared.map((s) => html`<code>${s.path}</code> `)}</p>
-          ${proposed.length ? html`<p>Proposed by agents' lookups: ${proposed.map((s) => html`
-            <form method="post" action="/rules/${x.ruleId}/accept-scope" class="inline"><input type="hidden" name="path" value="${s.path}">
-            <code>${s.path}</code> <button>accept</button></form> `)}</p>` : ''}
-          <details><summary>Change this rule</summary>
+          <p class="small">Source: ${x.citation}. In force since ${x.effectiveFrom}. Version ${x.n}. <a href="/audit/${x.ruleId}">Audit trail</a></p>
+          ${proposed.length ? html`<details class="quiet"><summary>${proposed.length} file${proposed.length === 1 ? '' : 's'} outside its folders (${declared.map((s) => s.path).join(', ')}) also use it</summary>
+            <p class="small">An AI assistant looked this rule up while writing these files. Add a file to the rule's scope so every future edit to it is checked too.</p>
+            <ul class="plain">${proposed.map((s) => html`<li><form method="post" action="/rules/${x.ruleId}/accept-scope" class="inline">
+              <input type="hidden" name="path" value="${s.path}"><code>${s.path}</code> <button>add to scope</button></form></li>`)}</ul>
+          </details>` : ''}
+          <details class="act"><summary class="button primary">Change this rule</summary>
             <form method="post" action="/rules/${x.ruleId}/supersede" class="change">
-              <label>New text <textarea name="text" required maxlength="1000">${x.text}</textarea></label>
-              <label>New figure (${x.unit ?? 'none'}) <input name="figure" type="number" step="1" value="${x.figure ?? ''}"></label>
-              <label>Citation <input name="citation" required maxlength="300" value="${x.citation}"></label>
-              <label>Effective from <input name="effectiveFrom" type="date" required value="${x.effectiveFrom}"></label>
-              <label>Reason <input name="reason" required maxlength="300" placeholder="Why it changed"></label>
+              ${figureInput(x.ruleId, 'New figure', x.figure, x.unit)}
+              <label for="text-${x.ruleId}">New wording</label><textarea id="text-${x.ruleId}" name="text" required maxlength="1000">${x.text}</textarea>
+              <label for="cit-${x.ruleId}">Legal source</label><input id="cit-${x.ruleId}" name="citation" required maxlength="300" value="${x.citation}">
+              <label for="eff-${x.ruleId}">In force from</label><input id="eff-${x.ruleId}" name="effectiveFrom" type="date" required value="${x.effectiveFrom}">
+              <label for="why-${x.ruleId}">Why it changed</label><input id="why-${x.ruleId}" name="reason" required maxlength="300" placeholder="For example: the law changed">
               <input type="hidden" name="unit" value="${x.unit ?? ''}">
               <div class="row">
-                <button name="mode" value="draft">Dry run as draft</button>
-                ${who.role === 'compliance' ? html`<button name="mode" value="final" class="primary">Make final and open tasks</button>` : ''}
+                <button name="mode" value="draft">Preview what it touches</button>
+                ${who.role === 'compliance' ? html`<button name="mode" value="final" class="primary">Make it official and assign fixes</button>` : ''}
               </div>
+              <p class="small">The preview changes nothing and assigns no one. Making it official replaces the rule and gives each affected file to the person whose AI last changed it.</p>
             </form>
           </details>
         </article>`;
@@ -119,8 +188,11 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
 
   r.post('/rules/:id/supersede', wrap(async (req, res, who) => {
     const b = req.body as Record<string, string>;
-    const figure = b.figure ? Number.parseInt(b.figure, 10) : undefined;
     const unit = (['paise', 'cents', 'percent', 'none'].includes(b.unit ?? '') ? b.unit : undefined) as 'paise' | 'cents' | undefined;
+    // Money is typed in rupees or dollars (figureInput) and stored in paise or cents.
+    const typed = b.figure ? Number.parseFloat(b.figure) : undefined;
+    const figure = typed === undefined || !Number.isFinite(typed) ? undefined
+      : Math.round(unit === 'paise' || unit === 'cents' ? typed * 100 : typed);
     const s = await supersede(db, who, {
       ruleId: String(req.params.id), text: String(b.text ?? '').slice(0, 1000), figure: Number.isFinite(figure) ? figure : undefined, unit,
       citation: String(b.citation ?? '').slice(0, 300), effectiveFrom: String(b.effectiveFrom ?? ''),
@@ -163,7 +235,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
           <details><summary>Correct it</summary>
             <form method="post" action="/rules/${g.ruleId}/supersede" class="change">
               <label>Correct text <textarea name="text" required maxlength="1000">${g.text}</textarea></label>
-              <label>Correct figure (${g.unit ?? 'none'}) <input name="figure" type="number" step="1" value="${g.figure ?? ''}"></label>
+              ${figureInput(`g-${g.ruleId}`, 'Correct figure', g.figure, g.unit)}
               <label>Source <input name="citation" required maxlength="300" placeholder="Where the correct figure comes from"></label>
               <label>Effective from <input name="effectiveFrom" type="date" required value="${g.effectiveFrom}"></label>
               <input type="hidden" name="reason" value="Corrected an agent's guess">
@@ -187,9 +259,10 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
     if (!p) return res.status(404).send(page({ title: 'Not found', who: who.name, active: '', body: html`<p>No such rule change.</p>` }));
     const rows = await run<FindingRow>(db.team(who.teamId), TEAM.findings, { id: p.id }, { readOnly: true });
     res.send(page({ title: 'Receipt', who: who.name, active: '', refresh: p.status === 'done' ? undefined : 2, body: html`
-      <h1>${p.dryRun ? 'Dry run' : 'Rule change'}: ${p.title} ${badge('', p.jurisdiction)}</h1>
-      <p class="receipt">${receipt(p)}</p>
-      ${p.dryRun ? html`<p class="muted">Draft: nothing is assigned until the rule is made final. The final run starts fresh from the graph.</p>` : ''}
+      <h1>${p.dryRun ? 'Preview' : 'Rule changed'}: ${p.title} ${badge('', p.jurisdiction)}</h1>
+      <p class="receipt">${summary(p)}</p>
+      ${p.status !== 'done' ? html`<p class="muted">Premise is still checking the files. This page refreshes by itself.</p>` : ''}
+      ${p.dryRun ? html`<p class="muted">This is a preview: nothing is assigned until the rule is made official.</p>` : ''}
       ${(() => {
         const fixes = rows.filter((f) => f.verdict === 'needs_change' && f.patch).length;
         return fixes ? html`<div class="card fix"><b>One-click fix: ${fixes} file${fixes === 1 ? '' : 's'} with a proposed fix.</b>
@@ -199,18 +272,18 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
           <a href="/receipt/${p.id}/fix.patch">Download the patch</a> instead.</div>` : '';
       })()}
       <table>
-        <thead><tr><th>File</th><th>Linked because</th><th>Owner</th><th>Reviewer</th><th>Task</th></tr></thead>
+        <thead><tr><th>File</th><th>Why it was found</th><th>Changed last by</th><th>Reviewer's answer</th><th>Fix task</th></tr></thead>
         <tbody>${rows.map((f) => html`<tr>
           <td><a href="/why?path=${encodeURIComponent(f.path)}"><code>${f.path}</code></a></td>
           <td>${tierBadge(f.tier)}</td>
           <td>${f.owner ?? ''}</td>
           <td>${verdictBadge(f.verdict)}<div class="small">${f.reason ?? ''}</div>
-              ${f.patch ? html`<details><summary>suggested patch</summary><pre>${f.patch}</pre></details>` : ''}</td>
+              ${f.patch ? html`<details><summary>the proposed fix</summary><pre>${f.patch}</pre></details>` : ''}</td>
           <td>${f.taskId ? html`${f.taskStatus?.replace('_', ' ')}` : html`<span class="muted">—</span>`}</td>
         </tr>`)}</tbody>
       </table>
-      <p class="muted small">Tiers: <b>asked</b> = the agent looked the rule up while writing this file; <b>shown</b> = Premise showed it the rule
-      before the edit; <b>in scope</b> = the file sits in the rule's folders but nothing was shown (a hand or shell edit); <b>session</b> = written in a session that looked the rule up for another file.</p>
+      <p class="small">Strongest link first: the AI looked the rule up while writing the file; Premise showed it the rule before the edit;
+      the file sits in the rule's folders but was edited by hand; the rule was looked up in the same session for another file; or the file still holds the old figure.</p>
     ` }));
   }));
 
@@ -226,19 +299,46 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
     const p = typeof req.query.path === 'string' ? req.query.path : '';
     const paths = p ? await shortestToRegulators(db, who, p) : [];
     const w = p ? overlayPaths(await why(db, who, p), paths) : undefined;
+    const regulator = new Map(paths.map((sp) => [sp.jurisdiction, sp.regulator]));
+    const MARKET: Record<string, string> = { IN: 'India', US: 'United States', TEAM: 'Team convention' };
+    const day = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    // One chain per rule: the latest change that relied on it, and how many there were.
+    const byRule = new Map<string, { step: WhyStep; count: number }>();
+    for (const st of w?.steps ?? []) {
+      if (!st.ruleId) continue;
+      const seen = byRule.get(st.ruleId);
+      if (seen) seen.count++; else byRule.set(st.ruleId, { step: st, count: 1 });
+    }
     res.send(page({ title: 'Why', who: who.name, active: '/why', body: html`
       <h1>Why is this file the way it is?</h1>
+      <p class="lede">Pick a file to see which rules its code was written under, who changed it, and which regulator each rule comes from.</p>
       <form method="get" action="/why" class="inline">
-        <select name="path" onchange="this.form.submit()"><option value="">Choose a file…</option>
-          ${files.map((f) => html`<option value="${f.path}" ${f.path === p ? raw('selected') : ''}>${f.path} (${f.changes})</option>`)}
+        <label for="why-path" class="small">File</label>
+        <select id="why-path" name="path" onchange="this.form.submit()"><option value="">Choose a file…</option>
+          ${files.map((f) => html`<option value="${f.path}" ${f.path === p ? raw('selected') : ''}>${f.path}</option>`)}
         </select>
       </form>
       ${w ? html`
-        <h2>Shortest connection to each regulator <span class="small">(FalkorDB <code>algo.SPpaths</code>, highlighted)</span></h2>
-        ${paths.length ? html`<ul class="paths">${paths.map((sp) => html`<li><b>${sp.jurisdiction}</b> (${sp.regulator}), ${sp.hops} hops: ${sp.labels.map((l, i) => html`${i ? html` <span class="rel">${sp.rels[i - 1]}</span> ` : ''}<code>${l}</code>`)}</li>`)}</ul>`
-          : html`<p class="muted">This file is not connected to any regulator: no change to it relied on a rule.</p>`}
-        <div id="graph" class="graph" aria-label="The path from this file to the rules its changes relied on"></div>
-        <pre class="why">${w.text}</pre>
+        ${byRule.size ? html`<ol class="chains">${[...byRule.values()].map(({ step: st, count }) => html`<li class="chain">
+          <span class="link file"><code>${p}</code></span>
+          <span class="arrow" aria-hidden="true">→</span>
+          <span class="link">changed by <b>${st.member}</b>'s AI on ${day(st.at)}${count > 1 ? html` <span class="small">(and ${count - 1} more time${count > 2 ? 's' : ''})</span>` : ''}${CHAIN_WORDS[st.tier ?? ''] ? html`<span class="small">, which ${CHAIN_WORDS[st.tier ?? '']}</span>` : ''}</span>
+          <span class="arrow" aria-hidden="true">→</span>
+          <span class="link rule">relied on <b>${st.title}</b>: ${fig(st.figure, st.unit)} <span class="small">(version ${st.n}, ${st.status === 'final' ? 'official' : 'unconfirmed'})</span>
+            ${st.supersededBy.length ? html`<span class="badge bad">replaced since</span>` : ''}</span>
+          <span class="arrow" aria-hidden="true">→</span>
+          <span class="link market">${MARKET[st.jurisdiction ?? ''] ?? st.jurisdiction}${regulator.get(st.jurisdiction ?? '') ? html` · ${regulator.get(st.jurisdiction ?? '')}` : ''}</span>
+        </li>`)}</ol>` : html`<p class="muted">No recorded change to this file relied on a rule.</p>`}
+        ${w.tasks.length ? html`<h2>Fix tasks on this file</h2><ul class="plain">${w.tasks.map((t) => html`<li>
+          ${t.status === 'resolved' ? badge('ok', 'done') : t.status === 'proposed_clear' ? badge('muted', 'probably fine') : badge('warn', 'to fix')}
+          assigned to ${t.assignee}, due ${t.due}${t.verdict ? html`. Reviewer: ${verdictBadge(t.verdict)} <span class="small">${t.verdictReason ?? ''}</span>` : ''}</li>`)}</ul>` : ''}
+        <details class="quiet graph-details" open>
+          <summary>The same records, as FalkorDB stores them</summary>
+          <p class="small">Every box is a node and every arrow an edge in the team's graph. The highlighted route is the shortest connection
+          from the file to each regulator, found with FalkorDB's <code>algo.SPpaths</code>.</p>
+          <div id="graph" class="graph" aria-label="The path from this file to the rules its changes relied on"></div>
+          <pre class="why">${w.text}</pre>
+        </details>
         <script type="application/json" id="why-data">${raw(JSON.stringify({ nodes: w.nodes, edges: w.edges }).replace(/</g, '\\u003c'))}</script>
       ` : ''}
     `, script: w ? '<script src="/static/vendor/cytoscape.min.js"></script><script src="/static/app.js"></script>' : undefined }));
@@ -309,9 +409,10 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
   r.get('/tasks', wrap(async (_req, res, who) => {
     const tasks = await run<TaskRow>(db.team(who.teamId), TEAM.allTasks, { now: Date.now() }, { readOnly: true });
     const members = await run<{ id: string; name: string }>(db.team(who.teamId), TEAM.listMembers, {}, { readOnly: true });
-    const groups = [['open', 'Open'], ['proposed_clear', 'Reviewer proposes to clear'], ['resolved', 'Resolved']] as const;
+    const groups = [['open', 'To fix'], ['proposed_clear', 'The Reviewer says these are still fine: confirm'], ['resolved', 'Done']] as const;
     res.send(page({ title: 'Tasks', who: who.name, active: '/tasks', body: html`
-      <h1>Review tasks</h1>
+      <h1>Files to fix after a rule change</h1>
+      <p class="lede">Each file is assigned to the person whose AI last changed it, due on the day the new rule takes effect.</p>
       ${groups.map(([status, label]) => {
         const list = tasks.filter((t) => t.status === status);
         return html`<h2>${label} (${list.length})</h2>${list.length ? html`<table><tbody>${list.map((t) => html`<tr>

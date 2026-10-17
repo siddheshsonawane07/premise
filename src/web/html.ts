@@ -24,7 +24,8 @@ export class Raw {
 export const raw = (s: string) => new Raw(s);
 
 export function page(opts: { title: string; who: string; active: string; body: Raw; refresh?: number; script?: string }): string {
-  const nav = [['/', 'Overview'], ['/rules', 'Rules'], ['/guesses', 'Guesses'], ['/tasks', 'Tasks'], ['/why', 'Why'], ['/impact', 'Impact']] as const;
+  // Impact (the graph algorithms) stays at /impact but is left out of the menu.
+  const nav = [['/', 'Home'], ['/rules', 'Rules'], ['/guesses', 'Guesses'], ['/tasks', 'Tasks'], ['/why', 'Why']] as const;
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -41,7 +42,7 @@ ${opts.refresh ? raw(`<meta http-equiv="refresh" content="${Number(opts.refresh)
   <span class="who">Viewing as ${opts.who}</span>
 </header>
 <main>${opts.body}</main>
-<footer>Synthetic data: Tilldesk and its people are invented. Rule figures are public and cited; the 2026 wallet limit is an RBI <em>draft</em>. Premise supports evidence; it certifies nothing and is not legal or compliance advice.</footer>
+<footer>Synthetic data: the companies and people are invented. Rule figures are public and cited. Premise supports evidence; it certifies nothing and is not legal or compliance advice.</footer>
 ${opts.script ? raw(opts.script) : ''}
 </body>
 </html>`.s;
