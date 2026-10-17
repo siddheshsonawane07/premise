@@ -135,6 +135,7 @@ flowchart LR
   Change -- TO --> File
   Change -- "RELIED_ON {tier}" --> RVold
   File -- LATEST --> FileSnapshot
+  File -- "IMPORTS {names}" --> File
   Propagation -- FROM --> RVold
   Propagation -- TO --> RV
   Propagation -- "FOUND {tier}" --> File
@@ -176,6 +177,14 @@ a file outside the rule's folders, exists only as an edge in the graph; no folde
 `git log` holds it. The graph also decides where a plain text match is wrong: ₹10,000 and $10,000
 are both `10_000_00` in minor units, so a match in a file whose folders serve only another market
 is dropped.
+
+**Which file a borrowed figure lives in is also a path.** Each snapshot records the repo files it
+imports from as `(File)-[:IMPORTS {names}]->(File)`, replaced whenever the content changes. When a
+rule changes, the Reviewer follows up to three `IMPORTS` hops from each found file to the files that
+still hold the old figure (`TEAM.importedSources`) and reads them too. A file that only uses an
+imported constant, such as `topup.ts` → `limits.ts` or `reports/compliance.ts` →
+`hr/onboarding.ts` → `in/epf.ts`, is then judged against the file that defines it instead of
+blind.
 
 ## The Cypher queries
 
@@ -342,6 +351,22 @@ RETURN f.path AS path, ownerId, ownerName, via,
        CASE WHEN 'asked' IN tiers THEN 'asked' WHEN 'shown' IN tiers THEN 'shown'
             WHEN 'in_scope' IN tiers THEN 'in_scope' ELSE 'session' END AS tier
 ORDER BY path
+```
+
+#### `TEAM.importedSources`
+
+Q8b. Where a figure this file borrows actually lives: follow IMPORTS up to three hops (a re-export in an index file is one hop) to files whose latest content contains one of the old figure's spellings. The Reviewer is shown those files, nearest first, so a file that only uses an imported constant is not judged blind. `terms` is a coarse CONTAINS; the caller checks whole numbers.
+
+```cypher
+MATCH p = (:File {path: $path})-[:IMPORTS*1..3]->(src:File)
+MATCH (src)-[:LATEST]->(s:FileSnapshot)
+WHERE any(t IN $terms WHERE s.content CONTAINS t)
+WITH src, s, p
+ORDER BY length(p)
+WITH src, s, collect([n IN nodes(p) | n.path])[0] AS via, min(length(p)) AS hops
+RETURN src.path AS path, s.content AS content, via, hops
+ORDER BY hops, path
+LIMIT 3
 ```
 
 #### `TEAM.openTask`

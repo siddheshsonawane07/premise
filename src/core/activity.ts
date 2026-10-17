@@ -5,6 +5,7 @@ import { TEAM } from '../db/queries.ts';
 import { parentOf, toRepoPath } from '../paths.ts';
 import { forDeny, forRead, forSessionStart, type RuleLine, type TaskLine } from './context.ts';
 import { chainFor, pathsUp } from './rules.ts';
+import { parseImports } from './imports.ts';
 
 // What happens on each hook (IMPLEMENTATION_PLAN §3.1), independent of transport: the HTTP
 // routes, the command-line hook and the replay all call these.
@@ -222,8 +223,9 @@ export async function stopSweep(
 
 export async function recordSnapshot(db: Db, who: Principal, path: string, content: string): Promise<void> {
   const hash = createHash('sha256').update(content).digest('hex');
+  const imports = parseImports(path, content).map((i) => ({ ...i, dir: parentOf(i.path) }));
   await run(db.team(who.teamId), TEAM.recordSnapshot, {
-    path, dir: parentOf(path), chain: chainFor([path]), hash,
+    path, dir: parentOf(path), chain: chainFor([path, ...imports.map((i) => i.path)]), hash, imports,
     content: content.length > MAX_SNAPSHOT ? content.slice(0, MAX_SNAPSHOT) : content, at: Date.now(),
   });
 }

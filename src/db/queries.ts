@@ -351,7 +351,12 @@ export const TEAM = {
       SET x.status = 'resolved', x.resolved_reason = $resolvedReason, x.resolved_at = $at)
     RETURN count(DISTINCT t) AS resolved`,
 
-  /** Q8. The file's latest content, for the Reviewer. Snapshots are shared by content hash. */
+  /**
+   * Q8. The file's latest content, for the Reviewer, and the repo files it imports from, in one
+   * query (STRICT 5.6). Snapshots are shared by content hash. The IMPORTS edges are replaced
+   * with the ones this content declares, each carrying the names it brings in; a file imported
+   * before Premise has seen it is created, so the edge is there when its content arrives.
+   */
   recordSnapshot: `
     ${FOLDER_CHAIN}
     MERGE (d:Folder {path: $dir})
@@ -364,7 +369,35 @@ export const TEAM = {
     MERGE (fs:FileSnapshot {hash: $hash})
     ON CREATE SET fs.content = $content, fs.at = $at
     MERGE (f)-[:LATEST]->(fs)
+    WITH f, fs
+    OPTIONAL MATCH (f)-[oldImp:IMPORTS]->(:File)
+    WITH f, fs, collect(oldImp) AS oldImps
+    FOREACH (o IN oldImps | DELETE o)
+    FOREACH (imp IN $imports |
+      MERGE (td:Folder {path: imp.dir})
+      MERGE (t:File {path: imp.path})
+      MERGE (t)-[:IN]->(td)
+      MERGE (f)-[e:IMPORTS]->(t)
+      SET e.names = imp.names)
     RETURN fs.hash AS hash`,
+
+  /**
+   * Q8b. Where a figure this file borrows actually lives: follow IMPORTS up to three hops
+   * (a re-export in an index file is one hop) to files whose latest content contains one of
+   * the old figure's spellings. The Reviewer is shown those files, nearest first, so a file
+   * that only uses an imported constant is not judged blind. `terms` is a coarse CONTAINS;
+   * the caller checks whole numbers.
+   */
+  importedSources: `
+    MATCH p = (:File {path: $path})-[:IMPORTS*1..3]->(src:File)
+    MATCH (src)-[:LATEST]->(s:FileSnapshot)
+    WHERE any(t IN $terms WHERE s.content CONTAINS t)
+    WITH src, s, p
+    ORDER BY length(p)
+    WITH src, s, collect([n IN nodes(p) | n.path])[0] AS via, min(length(p)) AS hops
+    RETURN src.path AS path, s.content AS content, via, hops
+    ORDER BY hops, path
+    LIMIT 3`,
 
   /**
    * Q10. A rule changes, in one query (STRICT 5.6). The new version links to the current one
