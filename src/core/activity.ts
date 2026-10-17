@@ -6,6 +6,7 @@ import { parentOf, toRepoPath } from '../paths.ts';
 import { forDeny, forRead, forSessionStart, type RuleLine, type TaskLine } from './context.ts';
 import { chainFor, pathsUp } from './rules.ts';
 import { parseImports } from './imports.ts';
+import { findLeaks, forLeak, markLeakWarned } from './leaks.ts';
 
 // What happens on each hook (IMPLEMENTATION_PLAN §3.1), independent of transport: the HTTP
 // routes, the command-line hook and the replay all call these.
@@ -109,6 +110,12 @@ export async function preEdit(db: Db, who: Principal, ev: ToolEvent, tool = 'cla
   if (unseen.length) {
     await markShown(db, who, ev.session_id, path, unseen.map((r) => r.versionId), tool);
     return { decision: 'deny', reason: forDeny(path, unseen) };
+  }
+  // The leak guard: a figure that already lives in a setting is read from it, not typed again.
+  const leaks = await findLeaks(db, who, ev.session_id, path, ev.tool_input);
+  if (leaks.length) {
+    await markLeakWarned(db, who, ev.session_id, path, leaks, tool);
+    return { decision: 'deny', reason: forLeak(path, leaks) };
   }
   // A claim is by a member: an MCP call carries the member's key but not Claude Code's session.
   const others = tasks.filter((t) =>

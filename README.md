@@ -135,6 +135,7 @@ flowchart LR
   Change -- TO --> File
   Change -- "RELIED_ON {tier}" --> RVold
   File -- LATEST --> FileSnapshot
+  Session -- "LEAK_WARNED {path}" --> RV
   File -- "IMPORTS {names}" --> File
   Propagation -- FROM --> RVold
   Propagation -- TO --> RV
@@ -185,6 +186,16 @@ still hold the old figure (`TEAM.importedSources`) and reads them too. A file th
 imported constant, such as `topup.ts` → `limits.ts` or `reports/compliance.ts` →
 `hr/onboarding.ts` → `in/epf.ts`, is then judged against the file that defines it instead of
 blind.
+
+**The same edges keep a figure in its one setting.** Before an agent's edit, Premise checks whether
+the text it adds spells the current figure of a rule in the file's markets. If a file already
+exports that figure as a constant, the one most imported (`TEAM.figureHome`), the edit is denied
+once with the constant's name and the import line to use; the warning is a `LEAK_WARNED` edge, and
+the same edit retried goes through, because the number may mean something else. Replaying the
+captured sessions, it would have warned 10 times for the two rules that later changed; 9 of those
+files are in the answer keys (Tilldesk's `cash-intake.ts`, which kept its own copy of the limit, and
+eight tests that typed the boundary). The tenth was `test/esi.test.ts`, where ₹15,000 is an ESI
+input, not the EPF ceiling.
 
 ## The Cypher queries
 
@@ -367,6 +378,19 @@ WITH src, s, collect([n IN nodes(p) | n.path])[0] AS via, min(length(p)) AS hops
 RETURN src.path AS path, s.content AS content, via, hops
 ORDER BY hops, path
 LIMIT 3
+```
+
+#### `TEAM.figureHome`
+
+Q8d. A figure's home: the files whose latest content holds it, most imported first. The file that the most other files import the figure from is the one setting everyone should read; the caller then checks it really defines the figure as an exported constant.
+
+```cypher
+MATCH (f:File)-[:LATEST]->(s:FileSnapshot)
+WHERE any(t IN $terms WHERE s.content CONTAINS t)
+OPTIONAL MATCH (f)<-[i:IMPORTS]-(:File)
+RETURN f.path AS path, s.content AS content, count(i) AS importers
+ORDER BY importers DESC, path
+LIMIT 5
 ```
 
 #### `TEAM.openTask`

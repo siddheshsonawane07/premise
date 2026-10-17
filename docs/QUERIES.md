@@ -510,6 +510,59 @@ FOREACH (imp IN $imports |
 RETURN fs.hash AS hash
 ```
 
+#### `TEAM.figuresInMarket`
+
+Q8c. The leak guard's candidates: every rule whose current version carries a figure, kept to the markets this file's folders serve (all markets when none is declared, as for `test/`).
+
+```cypher
+MATCH (r:Rule)-[:CURRENT]->(v:RuleVersion)
+MATCH (r)-[:APPLIES_IN]->(j:Jurisdiction)
+WHERE v.figure IS NOT NULL AND (size($markets) = 0 OR j.code IN $markets)
+RETURN r.id AS ruleId, r.title AS title, v.id AS versionId, v.figure AS figure, v.unit AS unit,
+       j.code AS jurisdiction
+```
+
+#### `TEAM.figureHome`
+
+Q8d. A figure's home: the files whose latest content holds it, most imported first. The file that the most other files import the figure from is the one setting everyone should read; the caller then checks it really defines the figure as an exported constant.
+
+```cypher
+MATCH (f:File)-[:LATEST]->(s:FileSnapshot)
+WHERE any(t IN $terms WHERE s.content CONTAINS t)
+OPTIONAL MATCH (f)<-[i:IMPORTS]-(:File)
+RETURN f.path AS path, s.content AS content, count(i) AS importers
+ORDER BY importers DESC, path
+LIMIT 5
+```
+
+#### `TEAM.leakWarned`
+
+Q8e. Which of these rule versions this session was already warned about for this path.
+
+```cypher
+MATCH (:Session {id: $session})-[e:LEAK_WARNED]->(v:RuleVersion)
+WHERE e.path = $path AND v.id IN $versionIds
+RETURN v.id AS versionId
+```
+
+#### `TEAM.markLeakWarned`
+
+Q8f. Record the warning, so the same edit retried goes through (deny once, like Q6).
+
+```cypher
+MERGE (s:Session {id: $session})
+ON CREATE SET s.tool = $tool, s.started_at = $at
+WITH s
+MATCH (m:Member {id: $member})
+MERGE (s)-[:BY]->(m)
+WITH s
+UNWIND $versionIds AS vid
+MATCH (v:RuleVersion {id: vid})
+MERGE (s)-[e:LEAK_WARNED {path: $path}]->(v)
+ON CREATE SET e.at = $at
+RETURN count(e) AS warned
+```
+
 #### `TEAM.importedSources`
 
 Q8b. Where a figure this file borrows actually lives: follow IMPORTS up to three hops (a re-export in an index file is one hop) to files whose latest content contains one of the old figure's spellings. The Reviewer is shown those files, nearest first, so a file that only uses an imported constant is not judged blind. `terms` is a coarse CONTAINS; the caller checks whole numbers.
