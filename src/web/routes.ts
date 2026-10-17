@@ -61,6 +61,64 @@ function summary(p: PropagationView): string {
   return `${what} ${built}: ${verdict}. Each fix is assigned, due ${p.effectiveFrom}.`;
 }
 
+/** Home's picture of the product: four panels, left to right (top to bottom on a phone). */
+function howItWorks(example: string) {
+  const file = (name: string, cls = '') => html`<span class="d-file ${cls}"><span class="d-lines"></span>${name}</span>`;
+  return html`<div class="flow" role="img" aria-label="How Premise works, in four steps">
+    <div class="panel">
+      <span class="step-n">1</span><b>An AI assistant writes code</b>
+      <div class="pic">${file('payslip.ts')}<span class="d-tag">built on ${example}</span></div>
+      <p class="small">Premise records which rule, and which version of it, each edit relied on.</p>
+    </div>
+    <span class="flow-arrow" aria-hidden="true"></span>
+    <div class="panel">
+      <span class="step-n">2</span><b>The rule changes</b>
+      <div class="pic d-change"><span class="d-old">${example}</span><span class="d-to">→</span><span class="d-new">new figure</span></div>
+      <p class="small">Compliance updates it once, in Premise.</p>
+    </div>
+    <span class="flow-arrow" aria-hidden="true"></span>
+    <div class="panel">
+      <span class="step-n">3</span><b>Premise follows the links</b>
+      <div class="pic"><svg viewBox="0 0 224 104" class="d-graph" aria-hidden="true">
+        <line x1="38" y1="52" x2="96" y2="14"></line><line x1="38" y1="52" x2="96" y2="52"></line>
+        <line x1="38" y1="52" x2="96" y2="90"></line><line x1="152" y1="52" x2="168" y2="52" class="dash"></line>
+        <circle cx="24" cy="52" r="15" class="rule"></circle>
+        <rect x="96" y="4" width="56" height="20" rx="4"></rect><rect x="96" y="42" width="56" height="20" rx="4"></rect>
+        <rect x="96" y="80" width="56" height="20" rx="4"></rect><rect x="168" y="42" width="52" height="20" rx="4" class="far"></rect>
+        <text x="24" y="56" text-anchor="middle" class="on-rule">rule</text>
+        <text x="124" y="18" text-anchor="middle">file</text><text x="124" y="56" text-anchor="middle">file</text>
+        <text x="124" y="94" text-anchor="middle">file</text><text x="194" y="56" text-anchor="middle">setting</text>
+      </svg></div>
+      <p class="small">Every file built on the old version, including files that only borrow the figure from another file.</p>
+    </div>
+    <span class="flow-arrow" aria-hidden="true"></span>
+    <div class="panel">
+      <span class="step-n">4</span><b>Fixes, ready to merge</b>
+      <div class="pic d-sort"><span class="d-bad">needs a fix → on a branch</span><span class="d-ok">still fine → cleared</span></div>
+      <p class="small">An AI Reviewer reads each file. The developer runs one command and merges the fixes.</p>
+    </div>
+  </div>`;
+}
+
+/** The receipt's picture: the change, the files built on the old version, and how they were sorted. */
+function foundDiagram(p: PropagationView, rows: FindingRow[]) {
+  const fix = rows.filter((f) => f.verdict === 'needs_change');
+  const fine = rows.filter((f) => f.verdict === 'still_fine');
+  const open = rows.filter((f) => f.verdict !== 'needs_change' && f.verdict !== 'still_fine');
+  const list = (fs: FindingRow[]) => html`<ul>${fs.map((f) => html`<li><a href="/why?path=${encodeURIComponent(f.path)}"><code>${f.path}</code></a></li>`)}</ul>`;
+  return html`<div class="found" role="img" aria-label="What this rule change found">
+    <div class="node change"><span class="small">The rule</span><b>${fig(p.oldFigure, p.unit) || 'old'} → ${fig(p.newFigure, p.unit) || 'new'}</b></div>
+    <span class="found-arrow" aria-hidden="true">→</span>
+    <div class="node"><span class="small">Built on the old version</span><b>${rows.length} file${rows.length === 1 ? '' : 's'}</b></div>
+    <span class="found-arrow" aria-hidden="true">→</span>
+    <div class="buckets">
+      ${fix.length ? html`<div class="bucket bad"><b>${fix.length} need${fix.length === 1 ? 's' : ''} a fix</b>${list(fix)}</div>` : ''}
+      ${fine.length ? html`<div class="bucket ok"><b>${fine.length} still fine</b><span class="small">They only borrow the figure, or never use it.</span>${list(fine)}</div>` : ''}
+      ${open.length ? html`<div class="bucket muted"><b>${open.length} for a person to check</b><span class="small">The Reviewer could not tell.</span>${list(open)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
 /** A figure field in the unit a person thinks in: ₹ or $ for money (stored in paise or cents). */
 function figureInput(id: string, label: string, figure: number | undefined, unit: string | undefined) {
   const money = unit === 'paise' ? '₹' : unit === 'cents' ? '$' : '';
@@ -97,6 +155,8 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
     const views = (await Promise.all(props.map((p) => getPropagation(db, who.teamId, p.id)))).filter(Boolean) as PropagationView[];
     const open = tasks.filter((t) => t.status !== 'resolved');
     const official = rules.filter((x) => x.status === 'final').length;
+    const example = fig(rules.find((x) => x.status === 'final' && x.figure !== undefined)?.figure,
+      rules.find((x) => x.status === 'final' && x.figure !== undefined)?.unit) || 'the old figure';
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
     const todo = [
       guesses.length ? html`<li><a href="/guesses"><b>${plural(guesses.length, 'figure', 'figures')} an AI assistant guessed</b></a>
@@ -122,11 +182,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
       ${todo.length ? html`<ul class="todo">${todo}</ul>` : html`<p class="muted">Nothing is waiting for you.</p>`}
 
       <h2>How it works</h2>
-      <ol class="how">
-        <li><b>While code is written.</b> An AI assistant edits a file. Premise tells it which rules apply and records the version it relied on.</li>
-        <li><b>When a rule changes.</b> Premise follows those records to every file built on the old version, including files that only use the figure indirectly.</li>
-        <li><b>Then.</b> Its Reviewer reads each file and clears the ones that are still fine. The developer runs one command to get the fixes on a branch, and merges them.</li>
-      </ol>
+      ${howItWorks(example)}
 
       <h2>Recent rule changes</h2>
       ${views.length ? html`<ul class="receipts">${views.map((p) => html`<li><a href="/receipt/${p.id}">${badge(p.dryRun ? 'muted' : 'warn', p.dryRun ? 'preview' : 'official')} ${summary(p)}</a></li>`)}</ul>`
@@ -262,7 +318,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
       <h1>${p.dryRun ? 'Preview' : 'Rule changed'}: ${p.title} ${badge('', p.jurisdiction)}</h1>
       <p class="receipt">${summary(p)}</p>
       ${p.status !== 'done' ? html`<p class="muted">Premise is still checking the files. This page refreshes by itself.</p>` : ''}
-      ${p.dryRun ? html`<p class="muted">This is a preview: nothing is assigned until the rule is made official.</p>` : ''}
+      ${p.status === 'done' ? foundDiagram(p, rows) : ''}
       ${(() => {
         const fixes = rows.filter((f) => f.verdict === 'needs_change' && f.patch).length;
         return fixes ? html`<div class="card fix"><b>One-click fix: ${fixes} file${fixes === 1 ? '' : 's'} with a proposed fix.</b>
@@ -271,6 +327,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
           <code>main</code>; a fix whose file has changed since it was reviewed is skipped and listed. Premise never merges.
           <a href="/receipt/${p.id}/fix.patch">Download the patch</a> instead.</div>` : '';
       })()}
+      <details class="quiet"><summary>Every file, with the Reviewer's reasons</summary>
       <table>
         <thead><tr><th>File</th><th>Why it was found</th><th>Changed last by</th><th>Reviewer's answer</th><th>Fix task</th></tr></thead>
         <tbody>${rows.map((f) => html`<tr>
@@ -284,6 +341,7 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
       </table>
       <p class="small">Strongest link first: the AI looked the rule up while writing the file; Premise showed it the rule before the edit;
       the file sits in the rule's folders but was edited by hand; the rule was looked up in the same session for another file; or the file still holds the old figure.</p>
+      </details>
     ` }));
   }));
 

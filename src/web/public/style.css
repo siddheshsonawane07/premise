@@ -97,3 +97,45 @@ ol.chains { list-style: none; padding: 0; margin: 1.25rem 0; display: grid; gap:
 .chain .link.market { border-color: var(--warn); }
 .chain .arrow { color: var(--muted); }
 .graph-details { margin-top: 1.5rem; }
+
+/* Diagrams: Home's "How it works" and the receipt's "what it found". */
+.flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; gap: 0.6rem; align-items: stretch; margin: 0.75rem 0 1.5rem; }
+.panel { display: grid; grid-template-rows: auto auto 1fr auto; gap: 0.5rem; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0.8rem; min-width: 0; }
+.panel .small { margin: 0; }
+.step-n { width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; border: 2px solid var(--fg); }
+.pic { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 0.4rem; min-height: 6.5rem; padding: 0.5rem; border-radius: 6px; background: var(--bg); }
+.flow-arrow { align-self: center; width: 1.1rem; height: 1.1rem; border-top: 2px solid var(--muted); border-right: 2px solid var(--muted); transform: rotate(45deg); }
+.d-file { display: grid; gap: 0.3rem; font: 0.8rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 5px; background: var(--card); }
+.d-lines { display: block; width: 5.5rem; height: 1.6rem; background: repeating-linear-gradient(to bottom, var(--line) 0 3px, transparent 3px 7px); }
+.d-tag { font-size: 0.78rem; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0.15rem 0.5rem; }
+.pic .d-old { font-weight: 700; font-size: 1.15rem; text-decoration: line-through; color: var(--muted); }
+.pic .d-to { color: var(--muted); }
+.pic .d-new { font-weight: 700; font-size: 1.15rem; color: var(--warn); }
+.d-graph { width: 100%; max-width: 15rem; height: auto; }
+.d-graph line { stroke: var(--accent); stroke-width: 2; }
+.d-graph line.dash { stroke: var(--muted); stroke-dasharray: 3 3; }
+.d-graph rect { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+.d-graph rect.far { stroke: var(--muted); stroke-dasharray: 3 3; }
+.d-graph circle.rule { fill: var(--accent); }
+.d-graph text { fill: var(--fg); font-size: 10px; font-family: system-ui, sans-serif; }
+.d-graph text.on-rule { fill: var(--bg); font-weight: 700; }
+.d-sort span { font-size: 0.82rem; font-weight: 600; padding: 0.3rem 0.55rem; border-radius: 5px; }
+.d-sort .d-bad { color: var(--bad); border: 1px solid var(--bad); }
+.d-sort .d-ok { color: var(--ok); border: 1px solid var(--ok); }
+@media (max-width: 760px) {
+  .flow { grid-template-columns: 1fr; }
+  .flow-arrow { justify-self: center; transform: rotate(135deg); }
+}
+.found { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 1.25rem 0; }
+.found .node { display: grid; gap: 0.2rem; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0.7rem 0.9rem; }
+.found .node b { font-size: 1.25rem; }
+.found .node.change { border-color: var(--accent); }
+.found-arrow { font-size: 1.4rem; color: var(--muted); }
+.buckets { display: grid; gap: 0.6rem; flex: 1 1 20rem; min-width: 0; }
+.bucket { display: grid; gap: 0.25rem; border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; padding: 0.6rem 0.8rem; background: var(--card); min-width: 0; }
+.bucket.bad { border-left-color: var(--bad); } .bucket.bad > b { color: var(--bad); }
+.bucket.ok { border-left-color: var(--ok); } .bucket.ok > b { color: var(--ok); }
+.bucket.muted { border-left-color: var(--muted); }
+.bucket ul { list-style: none; padding: 0; margin: 0.2rem 0 0; display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; }
+.bucket code { overflow-wrap: anywhere; }
+.pic.d-change { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; }

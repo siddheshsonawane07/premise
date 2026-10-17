@@ -95,10 +95,10 @@ npx tsx scripts/setup-demo.ts --replay      # the Tilldesk demo graph, rebuilt f
 PREMISE_WEB_MEMBER=tilldesk.chitra npm start
 ```
 
-Open <http://localhost:8080>. **Home** says what is waiting for you; **Rules** lists the official
+Open <http://localhost:8080>. **Home** shows how Premise works as a four-step picture and what is waiting for you; **Rules** lists the official
 rules with how many files each is built into, and changes one (a preview that assigns nothing, or,
 as the compliance member Chitra, an official change that assigns a fix per file; money is typed in
-₹ or $); the **receipt** that follows lists every file found, the Reviewer's answer and the
+₹ or $); the **receipt** that follows draws what the change found (the files built on the old version, split into those that need a fix and those still fine) and lists every file, the Reviewer's answer and the
 one-click fix; **Guesses** holds the figures agents recorded from memory; **Tasks** the fixes to
 make; **Why** the chain from a file to each regulator, in words and as the graph. The graph
 algorithms (`algo.pageRank`, `algo.WCC`) are at <http://localhost:8080/impact>, left out of the
