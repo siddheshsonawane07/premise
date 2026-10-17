@@ -8,6 +8,7 @@ import { auditCsv, auditPack } from '../core/audit.ts';
 import { impact, overlayPaths, shortestToRegulators } from '../core/impact.ts';
 import { why } from '../core/why.ts';
 import { confirmGuess, type Guess, listGuesses } from '../core/guesses.ts';
+import { fixSet } from '../core/fix.ts';
 import { type Db, one, run } from '../db/client.ts';
 import { CONTROL, TEAM } from '../db/queries.ts';
 import type { PropagationQueue } from '../propagate/queue.ts';
@@ -189,6 +190,14 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
       <h1>${p.dryRun ? 'Dry run' : 'Rule change'}: ${p.title} ${badge('', p.jurisdiction)}</h1>
       <p class="receipt">${receipt(p)}</p>
       ${p.dryRun ? html`<p class="muted">Draft: nothing is assigned until the rule is made final. The final run starts fresh from the graph.</p>` : ''}
+      ${(() => {
+        const fixes = rows.filter((f) => f.verdict === 'needs_change' && f.patch).length;
+        return fixes ? html`<div class="card fix"><b>One-click fix: ${fixes} file${fixes === 1 ? '' : 's'} with a proposed fix.</b>
+          In the repository, run <code>npx premise-fix ${p.id}</code>. It puts every fix on a new branch,
+          <code>premise/${p.toId.replace('@', '-v')}</code>, cut from your current commit, without touching your checkout or
+          <code>main</code>; a fix whose file has changed since it was reviewed is skipped and listed. Premise never merges.
+          <a href="/receipt/${p.id}/fix.patch">Download the patch</a> instead.</div>` : '';
+      })()}
       <table>
         <thead><tr><th>File</th><th>Linked because</th><th>Owner</th><th>Reviewer</th><th>Task</th></tr></thead>
         <tbody>${rows.map((f) => html`<tr>
@@ -203,6 +212,12 @@ export function webRoutes(db: Db, queue: PropagationQueue, memberId: string | un
       <p class="muted small">Tiers: <b>asked</b> = the agent looked the rule up while writing this file; <b>shown</b> = Premise showed it the rule
       before the edit; <b>in scope</b> = the file sits in the rule's folders but nothing was shown (a hand or shell edit); <b>session</b> = written in a session that looked the rule up for another file.</p>
     ` }));
+  }));
+
+  r.get('/receipt/:id/fix.patch', wrap(async (req, res, who) => {
+    const set = await fixSet(db, who.teamId, String(req.params.id));
+    if (!set || !set.files.length) return res.status(404).type('text/plain').send('No proposed fixes for this rule change.');
+    res.attachment(`premise-${set.toId.replace('@', '-v')}.patch`).type('text/x-diff').send(set.files.map((f) => f.patch).join(''));
   }));
 
   // ── Why ──────────────────────────────────────────────────────────────────

@@ -46,6 +46,12 @@ Around that core:
   shortest connection from a file to each regulator (`algo.SPpaths`).
 - **Audit evidence per rule:** every version, approver and reason, every AI change made under it
   (file, member, session, model, tier), every review and its resolution; as a page, JSON or CSV.
+- **One-click fix, on a branch a person merges.** For each file the Reviewer says needs a change,
+  it proposes line replacements against the copy it read, and Premise turns them into a real
+  diff. `npx premise-fix <rule change>` puts them all on a new branch, `premise/<rule>-v<n>`, in a
+  separate git worktree, so the developer's checkout and `main` are never touched; a fix whose file
+  has changed since review does not apply and is listed instead. It never pushes or merges. The
+  receipt page shows the command and offers the patch as a download.
 - **Guessed figures, in one queue.** An agent that needs a figure nobody recorded writes it down as
   a draft with its source ("unverified: from memory") instead of typing it silently. The Guesses
   page lists each one with whose agent recorded it and every file already built on it, most relied
@@ -540,6 +546,7 @@ reset on a schedule, with the rule changes runnable from the browser.
 | `grep` for the old figure in every spelling | 7 of 9 | both `40_000_00` literals in `src/admin/`: the alert and the weekly digest | — |
 | The rule's declared folders | 2 of 9 | 7 files | 3 |
 | **Premise**, before the Reviewer | **9 of 9** | — | `src/wallet/index.ts`, `receipt-email.ts`, `topup.ts` |
+| **Premise, after the Reviewer** | **9 of 9** | — | — |
 
 **What lost, and what changed because of it.**
 
@@ -554,8 +561,12 @@ reset on a schedule, with the rule changes runnable from the browser.
   linked through the graph; it is there for edits no agent made. Its first test run caught a
   false alarm of its own, a US file holding `10_000_00` (dollars, not rupees), and the market
   check above was added because of it.
-- **The Reviewer has not yet been run against the model**, so whether it clears the three files
-  that never use the figure is not yet measured.
+- **The Reviewer (Claude Haiku 5.5) was first run on 2026-10-17**, against a version never
+  written to the graph (`scripts/measure.ts --review`). Its first prompt left 2 of the 3 false
+  alarms as "unknown": `index.ts` and `topup.ts` only use a constant from `limits.ts`, which it was
+  not shown. Since it follows `IMPORTS` to the file that defines the figure, it clears all three
+  and keeps all nine. `src/wallet/messages.ts` stays flagged as "unknown": the captured sessions
+  never sent its content, so the Reviewer has nothing to read.
 
 **A second test, fixed before it ran** ([`demo/payroll/PROTOCOL.md`](demo/payroll/PROTOCOL.md)).
 The Tilldesk numbers come from an app, prompts and answer key made while Premise was being built,
@@ -568,10 +579,14 @@ The changes measured are real ones:
 - **India's EPF wage ceiling** rising from ₹15,000 to ₹25,000 (Union Cabinet, 16 September 2026);
 - **the US overtime salary level** moving from $684 to $844 a week (the vacated 2024 rule).
 
-| Change | `grep` | The rule's folders | Premise, before the Reviewer |
-|---|---|---|---|
-| EPF ₹15,000 → ₹25,000 (5 files) | **5 of 5**, 1 false alarm | 1 of 5 | **5 of 5**, 5 false alarms |
-| FLSA $684 → $844 (4 files) | 1 of 4 | 1 of 4 | **4 of 4**, 2 false alarms |
+| Change | `grep` | The rule's folders | Premise, before the Reviewer | Premise, after the Reviewer |
+|---|---|---|---|---|
+| EPF ₹15,000 → ₹25,000 (5 files) | **5 of 5**, 1 false alarm | 1 of 5 | **5 of 5**, 5 false alarms | **5 of 5**, 0 false alarms |
+| FLSA $684 → $844 (4 files) | 1 of 4 | 1 of 4 | **4 of 4**, 2 false alarms | **4 of 4**, 0 false alarms |
+
+No file in either key was cleared by the Reviewer. **All three tests change a figure, not a
+calculation**; a change such as the Code on Wages' 50% rule, which alters how PF wages are worked
+out, is not measured here.
 
 - **On the EPF change, `grep` was as complete as Premise and more precise.** The agents wrote one
   constant per figure and imported it everywhere else. Premise's extra flags are the files that
@@ -583,6 +598,13 @@ The run also found two real bugs, and each one restarted it from scratch:
 1. **Premise told an agent "do not guess" for a figure it didn't hold, so the agent stopped.** Now
    the agent records the figure as a draft for compliance to confirm, and the file is linked to it.
 2. **Premise's session-start instruction contradicted that fix.**
+
+**The fixes, applied.** For the EPF change, the Reviewer's five proposed fixes were put on a branch
+with `premise-fix` and Tallyroll's own tests run on it: **50 of 50 pass under ₹25,000**. Changing
+only the setting (`EPF_WAGE_CEILING_PAISE` in `src/in/epf.ts`) leaves **6 tests in 4 files
+failing**: the setting is one line of a five-file change. The Reviewer's first patches were prose
+("Line 4: change it to …"), and none applied; it now returns line replacements, and Premise writes
+the diff.
 
 Across the five sessions, the agents recorded **eight figures Premise did not hold** (contribution
 rates, rounding rules, the 40-hour week), each marked as coming from memory. Without Premise,
@@ -615,6 +637,11 @@ measured yet.**
   file and the time since the session began, not to the session itself.
 - **Scope is declared by people**, and the `session` tier over-claims. The receipt's tiers say how
   strong each link is.
+- **A guessed figure is not checked against the official rules.** Matching a guess to a rule by
+  title words flagged unrelated rules (EPF rounding against the EPF ceiling), so it was not built;
+  no captured guess duplicates an official rule.
+- **A fix is only as good as the Reviewer's edit**, and a person reviews the branch before merging.
+  It was checked on one change (EPF: 50 of 50 Tallyroll tests pass on the branch).
 - **The Reviewer can be wrong.** It proposes; a person confirms a clear, and every verdict carries
   its model and prompt version.
 - **Claude Code only.** Cursor's hooks run commands only, cannot add context when a file is read,

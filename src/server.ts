@@ -6,6 +6,7 @@ import { authenticate, bearer, type Principal } from './auth.ts';
 import type { Config } from './config.ts';
 import { onRead, postEdit, preEdit, READ_TOOLS, EDIT_TOOLS, sessionStart, stopSweep, type ToolEvent } from './core/activity.ts';
 import { type Db, DbUnreachable } from './db/client.ts';
+import { fixSet } from './core/fix.ts';
 import { buildMcpServer } from './mcp/tools.ts';
 import { PathOutsideRepo } from './paths.ts';
 import type { PropagationQueue } from './propagate/queue.ts';
@@ -85,6 +86,14 @@ export function createApp(db: Db, config: Config, queue: PropagationQueue) {
     const b = req.body as { session_id: string; cwd: string; files: { path: string; mtimeMs: number; content?: string }[] };
     await stopSweep(db, req.who!, { session_id: b.session_id, cwd: b.cwd, files: Array.isArray(b.files) ? b.files : [] });
     res.json({});
+  }));
+
+  // ── Fixes for premise-fix: one rule change's proposed patches ──────────
+
+  app.get('/fix/:id', auth, wrap(async (req, res) => {
+    const set = await fixSet(db, req.who!.teamId, String(req.params.id));
+    if (!set) return res.status(404).json({ error: 'No finished rule change with that id' });
+    res.json(set);
   }));
 
   // ── MCP (stateless: a fresh server per request, the caller's key closed over) ──

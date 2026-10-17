@@ -594,6 +594,9 @@ export const TEAM = {
     OPTIONAL MATCH (t:ReviewTask)-[:BECAUSE]->(p), (t)-[:FOR]->(f)
     OPTIONAL MATCH (t)-[:HAS]->(tv:Verdict)
     OPTIONAL MATCH (f)-[:LATEST]->(:FileSnapshot)<-[:ON]-(sv:Verdict)-[:AGAINST]->(nv)
+    WITH f, e, t, tv, sv
+    ORDER BY sv.at DESC
+    WITH f, e, t, tv, collect(sv)[0] AS sv
     RETURN f.path AS path, e.tier AS tier, e.owner AS owner, e.via AS via, t.id AS taskId, t.status AS taskStatus,
            coalesce(tv.verdict, sv.verdict) AS verdict, coalesce(tv.reason, sv.reason) AS reason,
            coalesce(tv.patch, sv.patch) AS patch
