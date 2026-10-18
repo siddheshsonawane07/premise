@@ -26,6 +26,7 @@
     "@modelcontextprotocol/node": "2.1.1",
     "@modelcontextprotocol/server": "2.3.1",
     "cytoscape": "3.34.3",
+    "driver.js": "1.8.0",
     "express": "5.3.0",
     "falkordb": "6.8.0",
     "tsx": "4.23.15",

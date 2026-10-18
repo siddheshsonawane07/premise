@@ -95,7 +95,7 @@ npx tsx scripts/setup-demo.ts --replay      # the Tilldesk demo graph, rebuilt f
 PREMISE_WEB_MEMBER=tilldesk.chitra npm start
 ```
 
-Open <http://localhost:8080>. **Home** shows how Premise works as a four-step picture and what is waiting for you; **Rules** lists the official
+Open <http://localhost:8080>. **Run the demo** on Home (or *Take the tour* in the header) opens the team's demo rule with its form already filled in with the real change it was tested on (Tilldesk: the RBI cash-load cap, ₹50,000 → ₹10,000; Tallyroll: the EPF wage ceiling, ₹15,000 → ₹25,000). A nine-step walkthrough, drawn with Driver.js, then guides the visitor: preview the change, see the files that need a fix and those still fine, the one-command fix, one file traced to its regulator, and that same trace walked through as a graph, column by column (who changed the file, which rules it used and who made them, and the shortest path FalkorDB found). It starts only when asked: a first-time visitor gets a one-line offer on Home, which goes away for good once taken, declined or finished (kept in the browser's `localStorage`; `?tour=reset` on any page forgets that and starts the tour again). ×, Esc or *Skip tour* ends it at any step, and it works as a plain page without JavaScript. A preview assigns nothing, and the receipt shows the Reviewer's progress while it checks (about 25 seconds for Tallyroll's ten files). **Home** shows how Premise works as a four-step picture and what is waiting for you; **Rules** lists the official
 rules with how many files each is built into, and changes one (a preview that assigns nothing, or,
 as the compliance member Chitra, an official change that assigns a fix per file; money is typed in
 ₹ or $); the **receipt** that follows draws what the change found (the files built on the old version, split into those that need a fix and those still fine) and lists every file, the Reviewer's answer and the
@@ -709,5 +709,5 @@ measured yet.**
 - **Libraries:** [FalkorDB](https://github.com/FalkorDB/FalkorDB) (server, SSPL, run as a separate
   container), [`falkordb`](https://github.com/FalkorDB/falkordb-ts) client (MIT),
   `@modelcontextprotocol/server`, `/express`, `/node` (Apache-2.0), `express` (MIT), `zod` (MIT),
-  `@anthropic-ai/sdk` (MIT), `cytoscape` (MIT), `tsx` (MIT), `vitest` (MIT), `typescript`
+  `@anthropic-ai/sdk` (MIT), `cytoscape` (MIT), `driver.js` (MIT, the walkthrough's spotlight and popovers), the Anek Latin typeface by Ek Type (SIL Open Font License, loaded from Google Fonts), `tsx` (MIT), `vitest` (MIT), `typescript`
   (Apache-2.0).

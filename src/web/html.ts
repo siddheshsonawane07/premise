@@ -23,6 +23,10 @@ export class Raw {
 
 export const raw = (s: string) => new Raw(s);
 
+// Changes on every server start, so browsers fetch fresh copies of our own files after a restart
+// even though /static is cached for an hour.
+export const ASSET_V = Date.now().toString(36);
+
 export function page(opts: { title: string; who: string; active: string; body: Raw; refresh?: number; script?: string }): string {
   // Impact (the graph algorithms) stays at /impact but is left out of the menu.
   const nav = [['/', 'Home'], ['/rules', 'Rules'], ['/guesses', 'Guesses'], ['/tasks', 'Tasks'], ['/why', 'Why']] as const;
@@ -33,16 +37,23 @@ export function page(opts: { title: string; who: string; active: string; body: R
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${opts.refresh ? raw(`<meta http-equiv="refresh" content="${Number(opts.refresh)}">`) : ''}
 <title>${opts.title} · Premise</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..125,100..800&display=swap">
+<link rel="stylesheet" href="/static/driver/driver.css">
+<link rel="stylesheet" href="/static/style.css?v=${ASSET_V}">
 </head>
-<body>
+<body data-page="${opts.title.toLowerCase()}">
 <header class="top">
   <a class="brand" href="/">Premise</a>
   <nav>${nav.map(([href, label]) => html`<a href="${href}" class="${opts.active === href ? 'on' : ''}">${label}</a>`)}</nav>
+  <a class="tour-start" href="/tour">Take the tour</a>
   <span class="who">Viewing as ${opts.who}</span>
 </header>
 <main>${opts.body}</main>
-<footer>Synthetic data: the companies and people are invented. Rule figures are public and cited. Premise supports evidence; it certifies nothing and is not legal or compliance advice.</footer>
+<footer>Demo data: the companies and people are invented; the rule figures are real and cited. Not legal advice.</footer>
+<script src="/static/driver/driver.js.iife.js" defer></script>
+<script src="/static/tour.js?v=${ASSET_V}" defer></script>
 ${opts.script ? raw(opts.script) : ''}
 </body>
 </html>`.s;
