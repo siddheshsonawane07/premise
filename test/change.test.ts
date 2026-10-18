@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { onRead, postEdit, sessionStart, stopSweep } from '../src/core/activity.ts';
 import {
-  claimTask, handOff, NotAllowed, receipt, resolveTask, type Review, runPropagation, supersede,
+  claimTask, getPropagation, handOff, NotAllowed, receipt, resolveTask, type Review, runPropagation, supersede,
 } from '../src/core/change.ts';
+import { PropagationQueue } from '../src/propagate/queue.ts';
 import { agentRecordRule, figureSpellings, lookupRule, mentionsFigure } from '../src/core/rules.ts';
 import { TEAM } from '../src/db/queries.ts';
 import { why } from '../src/core/why.ts';
@@ -272,5 +273,17 @@ describe('handoff', () => {
     const [t] = await run<{ id: string }>(db.team(w.teamId),
       "MATCH (t:ReviewTask)-[:FOR]->(:File {path: 'src/wallet/limits.ts'}) MATCH (t)-[:ASSIGNED]->(:Member {name: 'Ben'}) RETURN t.id AS id");
     await expect(handOff(db, w.asha, t!.id, 'asha', 'taking it back without asking')).rejects.toBeInstanceOf(NotAllowed);
+  });
+});
+
+describe('a check that cannot finish', () => {
+  it('is marked failed, so the receipt stops saying "still checking"', async () => {
+    // A Reviewer that throws before it returns a promise escapes runPropagation's per-file catch.
+    const broken: Review = () => { throw new Error('reviewer crashed'); };
+    const queue = new PropagationQueue(db, broken);
+    const r = await supersede(db, w.chitra, { ...IN_DRAFT, figure: 7_000_00, text: 'Capped at ₹7,000 a month (draft).' });
+    queue.enqueue(w.teamId, r.propagationId);
+    await queue.wait(r.propagationId, 10_000);
+    expect((await getPropagation(db, w.teamId, r.propagationId))!.status).toBe('failed');
   });
 });

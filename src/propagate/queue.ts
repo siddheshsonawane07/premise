@@ -45,6 +45,8 @@ export class PropagationQueue {
           await runPropagation(this.db, job.teamId, job.id, this.review);
         } catch (err) {
           console.error(`premise: propagation ${job.id} failed:`, err instanceof Error ? err.message : err);
+          // Marked failed, so the receipt says so instead of "still checking" forever. Not retried at start-up.
+          await run(this.db.team(job.teamId), TEAM.setPropagationStatus, { id: job.id, status: 'failed' }).catch(() => {});
         }
         for (const done of this.waiters.get(job.id) ?? []) done();
         this.waiters.delete(job.id);
