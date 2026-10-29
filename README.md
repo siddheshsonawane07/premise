@@ -4,7 +4,6 @@
 written under, so that when a rule changes, every file written under the old version is found,
 including files that never mention the rule, and handed to the right person's agent.**
 
-Built for *Graph Hacks: Context for AI Agents* (WeMakeDevs × FalkorDB), 15–18 October 2026.
 The scenario is an invented Indian and US wallet company, *Tilldesk*, under RBI and FinCEN rules.
 Premise supports evidence; it certifies nothing and is not legal or compliance advice.
 
@@ -74,11 +73,9 @@ The agents in the demo are Claude Code sessions (developers' agents, through hoo
 Premise's own Reviewer agent (Claude Haiku 5.5). What every agent is told, and what it does next,
 comes out of a graph query.
 
-## Track
+## What it remembers
 
-**Track 2: Agent Memory and Coordination.**
-
-| Track 2 asks for | Premise |
+| Kind of memory | Premise |
 |---|---|
 | Episodic memory | Sessions, changes, and what each agent was shown and asked for |
 | Semantic memory | Rules, versioned, with citations, effective dates and markets |
@@ -688,11 +685,11 @@ measured yet.**
 
 ## AI disclosure
 
-- **Claude Code (Claude Opus 5.5)** was used throughout: researching the hackathon, the rules and
+- **Claude Code (Claude Opus 5.5)** was used throughout: researching the regulations and
   prior art; drafting the product and plan documents; and writing the code, including the Cypher
   queries, the tests and the web view. Every commit it helped with carries a `Co-Authored-By`
   trailer.
-- **Siddhesh decided** the product, the track, the scenario (India and the US), the four tiers
+- **Siddhesh decided** the product, the scenario (India and the US), the four tiers
   (including adding `session` after the measurement), what the Reviewer may and may not do, the
   stack, and what is not built; he reviews and can explain every query and choice.
 - **The demo data was made by AI agents**: five headless Claude Code sessions, acting as the

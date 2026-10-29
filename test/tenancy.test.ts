@@ -11,7 +11,7 @@ import { createApp } from '../src/server.ts';
 import { dropTeam, testDb } from './helpers/db.ts';
 import { makeWorld, ROOT, type World, writeEv } from './helpers/world.ts';
 
-// Separate memory per tenant (Track 2, STRICT 5.7), through the real HTTP surface: with team A's
+// Separate memory per tenant (STRICT 5.7), through the real HTTP surface: with team A's
 // key, every hook and MCP tool is tried against team B's rules, files and tasks. Nothing of B's
 // may come back, and nothing of B's may change.
 
