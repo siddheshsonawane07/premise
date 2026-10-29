@@ -8,6 +8,12 @@ Built for *Graph Hacks: Context for AI Agents* (WeMakeDevs × FalkorDB), 15–18
 The scenario is an invented Indian and US wallet company, *Tilldesk*, under RBI and FinCEN rules.
 Premise supports evidence; it certifies nothing and is not legal or compliance advice.
 
+[![Premise demo video: when a rule changes, find the code your AI agents built on it](https://img.youtube.com/vi/MojUWR5jKDs/maxresdefault.jpg)](https://youtu.be/MojUWR5jKDs)
+
+**[Watch the demo on YouTube](https://youtu.be/MojUWR5jKDs)** (6:37): the problem, what FalkorDB is
+and why a graph fits it, how Premise connects to Claude Code, one graph per team, speed, and the
+measured results.
+
 ## What it is
 
 AI agents write code *because of* a rule they were told: "cash loading is capped at ₹50,000 a
@@ -105,7 +111,7 @@ algorithms (`algo.pageRank`, `algo.WCC`) are at <http://localhost:8080/impact>, 
 menu. The raw graph is in FalkorDB Browser at <http://localhost:3000>.
 
 ```bash
-npm test                                    # 102 tests, against the real FalkorDB
+npm test                                    # 103 tests, against the real FalkorDB
 npx tsx scripts/measure.ts                  # grep vs the rule's folders vs Premise, against an answer key
 npx tsx scripts/measure.ts --payroll --rule us-flsa-salary  # the second test (setup-demo.ts --payroll --replay first)
 npx tsx scripts/ablate.ts                   # what breaks without the graph (start the server first)
@@ -524,14 +530,23 @@ reset on a schedule, with the rule changes runnable from the browser.
 
 ## Demo video
 
-**Not recorded yet.**
+**[youtu.be/MojUWR5jKDs](https://youtu.be/MojUWR5jKDs)**, 6 min 37 s. Chapters: 0:00 intro ·
+0:05 the problem · 1:54 what is FalkorDB · 2:31 why a graph · 3:12 how Premise works · 3:47
+connected to Claude Code · 4:27 many teams, one server · 4:55 speed and scale · 5:30 running it ·
+5:51 the app · 6:14 results.
+
+Every figure in it was re-run on 2026-10-29 and matched: the 103 tests, `measure.ts` for both
+apps, `ablate.ts` and `load.ts`. The one exception is the Reviewer's "no false alarms", which is
+from its 2026-10-17 run and needs an Anthropic key to repeat. The speed figures are from one
+laptop, as the video says.
 
 ## What breaks without FalkorDB
 
-`npx tsx scripts/ablate.ts`, on 2026-10-15:
+`npx tsx scripts/ablate.ts`, first run on 2026-10-15, last on 2026-10-29:
 
 - **Hooks off: the same rule change finds nothing.** With the graph's records, the dry run of the
-  RBI draft (₹50,000 → ₹10,000) reports *"10 files were changed under the old version"*. Without
+  RBI draft (₹50,000 → ₹10,000) reports *"12 files were changed under the old version"* (10 on
+  2026-10-15; the demo graph has grown since). Without
   them, the same rules, the same code: *"0 files were changed under the old version"*. The links
   exist only because the graph kept them.
 - **FalkorDB stopped: agents cannot edit governed files**, and are told why. An agent's edit gets
@@ -625,6 +640,9 @@ client on the same host), `npx tsx scripts/load.ts`, 2026-10-15:
 | Edits lost | 0 of 8,076 |
 | Cross-tenant reads | 0 (test) |
 
+Re-run on 2026-10-29: the same latencies (p95 3.9 ms and 3.4 ms), 543 writes/s, 0 of 8,140 edits
+lost.
+
 The design estimate is 10 developers × 34 AI commits a day ≈ 0.2 writes a second; ten times that
 is 2.2. **These numbers are local; the deployed latency, with the network in between, is not
 measured yet.**
@@ -683,6 +701,9 @@ measured yet.**
   was recorded through the `record_rule` MCP tool. Their hook events were captured, scrubbed of local paths, and are
   replayed to build the demo graph ([`demo/events/tilldesk.jsonl`](demo/events/tilldesk.jsonl)).
   One file, `src/wallet/messages.ts`, was written by hand to show a hand edit being caught.
+- **The demo video** was scripted and built with Claude Code, in Remotion; the narration is a
+  local text-to-speech voice (Kokoro), and every figure in it was checked against the scripts
+  above. Siddhesh chose what it says.
 - **At run time, the Reviewer calls Claude Haiku 5.5** (`claude-haiku-5-5`). Nothing else calls a
   model: recording, lookups, propagation and the why-path are graph queries.
 
